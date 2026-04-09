@@ -1,0 +1,36 @@
+[package]
+name = "ignis"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Granite-inspired mid-level Vulkan abstraction layer for Rust"
+
+[dependencies]
+ignis-core = { workspace = true }
+ignis-command = { workspace = true }
+ignis-descriptors = { workspace = true }
+ignis-pipeline = { workspace = true }
+ignis-wsi = { workspace = true }
+ignis-graph = { workspace = true }
+
+[dev-dependencies]
+env_logger = { workspace = true }
+
+[[example]]
+name = "01_triangle"
+
+[[example]]
+name = "02_textured_quad"
+
+[[example]]
+name = "03_multi_pass"
+
+[[example]]
+name = "04_render_graph"
+
+[[example]]
+name = "05_compute"
+
+[[example]]
+name = "06_async_transfer"

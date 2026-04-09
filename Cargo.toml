@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/joshburgess/ignis"
+
+[workspace.dependencies]
+# Vulkan bindings
+ash = "0.38"
+gpu-allocator = { version = "0.27", features = ["vulkan"] }
+spirv-reflect = "0.2"
+
+# Windowing
+winit = "0.30"
+raw-window-handle = "0.6"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Utilities
+parking_lot = "0.12"
+rustc-hash = "2.0"
+bitflags = "2.6"
+thiserror = "2.0"
+bytemuck = { version = "1.18", features = ["derive"] }
+
+# Internal crates
+ignis-core = { path = "crates/ignis-core" }
+ignis-command = { path = "crates/ignis-command" }
+ignis-descriptors = { path = "crates/ignis-descriptors" }
+ignis-pipeline = { path = "crates/ignis-pipeline" }
+ignis-wsi = { path = "crates/ignis-wsi" }
+ignis-graph = { path = "crates/ignis-graph" }
