@@ -8,6 +8,8 @@ use ash::vk;
 use gpu_allocator::vulkan as vma;
 use parking_lot::Mutex;
 
+use crate::linear_alloc::LinearAllocatorPool;
+
 /// Default number of frames that can be in flight simultaneously.
 pub const FRAME_OVERLAP: usize = 2;
 
@@ -57,7 +59,7 @@ impl DeletionQueue {
     }
 }
 
-/// A single frame's resources: fence, command pool, and deletion queue.
+/// A single frame's resources: fence, command pool, deletion queue, and linear allocator pool.
 pub(crate) struct FrameContext {
     /// Fence signaled when this frame's GPU work completes.
     pub fence: vk::Fence,
@@ -65,6 +67,8 @@ pub(crate) struct FrameContext {
     pub graphics_command_pool: vk::CommandPool,
     /// Deferred deletions to process when the fence signals.
     pub deletion_queue: DeletionQueue,
+    /// Bump allocator pool for transient per-frame data.
+    pub linear_allocator_pool: LinearAllocatorPool,
     /// Whether the fence has been submitted and may be in a signaled state.
     pub fence_submitted: bool,
 }
@@ -76,6 +80,7 @@ impl FrameContext {
             fence,
             graphics_command_pool: command_pool,
             deletion_queue: DeletionQueue::new(),
+            linear_allocator_pool: LinearAllocatorPool::new(),
             fence_submitted: false,
         }
     }
@@ -155,6 +160,9 @@ impl FrameContextManager {
         // Flush deferred deletions now that the GPU is done
         Self::flush_deletions(device, allocator, &mut frame.deletion_queue);
 
+        // Reset linear allocator pool — all transient allocations from this frame are recycled
+        frame.linear_allocator_pool.reset();
+
         // Reset command pool — all command buffers from this frame are now invalid
         // SAFETY: device and command pool are valid; we've waited on the fence.
         unsafe {
@@ -204,8 +212,14 @@ impl FrameContextManager {
     }
 
     /// Destroy all owned Vulkan objects. Called during shutdown after device_wait_idle.
-    pub fn destroy(&mut self, device: &ash::Device) {
-        for frame in &self.frames {
+    pub fn destroy(&mut self, device: &ash::Device, allocator: &Mutex<Option<vma::Allocator>>) {
+        let mut alloc_guard = allocator.lock();
+        for frame in &mut self.frames {
+            // Destroy linear allocator pools
+            if let Some(alloc) = alloc_guard.as_mut() {
+                frame.linear_allocator_pool.destroy(device, alloc);
+            }
+
             // SAFETY: device is valid, we've waited idle, these handles are valid.
             unsafe {
                 device.destroy_fence(frame.fence, None);

@@ -8,7 +8,9 @@ use thiserror::Error;
 
 use crate::context::{Context, ContextConfig, ContextError, QueueType};
 use crate::frame_context::{DeferredDeletion, FrameContextManager, FRAME_OVERLAP};
+use crate::linear_alloc::TransientAllocation;
 use crate::sampler::{SamplerCache, SamplerCreateInfo, StockSampler};
+use crate::sync::{FencePool, SemaphorePool};
 
 /// Errors that can occur during device operations.
 #[derive(Debug, Error)]
@@ -45,6 +47,8 @@ pub struct Device {
     pub(crate) context: Context,
     frame_manager: FrameContextManager,
     sampler_cache: SamplerCache,
+    pub(crate) semaphore_pool: SemaphorePool,
+    pub(crate) fence_pool: FencePool,
 }
 
 impl Device {
@@ -72,6 +76,8 @@ impl Device {
             context,
             frame_manager,
             sampler_cache,
+            semaphore_pool: SemaphorePool::new(),
+            fence_pool: FencePool::new(),
         })
     }
 
@@ -137,6 +143,25 @@ impl Device {
     pub fn get_stock_sampler(&self, stock: StockSampler) -> vk::Sampler {
         self.sampler_cache.get_stock(stock)
     }
+
+    /// Allocate transient data from the current frame's linear allocator pool.
+    ///
+    /// The returned allocation is valid until the frame context is recycled
+    /// (after `FRAME_OVERLAP` frames). The buffer is host-visible and coherent,
+    /// suitable for vertex, index, or uniform data.
+    pub fn allocate_transient(
+        &mut self,
+        size: usize,
+        alignment: usize,
+    ) -> Result<TransientAllocation, DeviceError> {
+        let device = self.context.device().clone();
+        let mut alloc_guard = self.context.allocator().lock();
+        let allocator = alloc_guard.as_mut().ok_or(DeviceError::AllocatorUnavailable)?;
+        self.frame_manager
+            .current_frame_mut()
+            .linear_allocator_pool
+            .allocate(&device, allocator, size, alignment)
+    }
 }
 
 impl Drop for Device {
@@ -150,11 +175,14 @@ impl Drop for Device {
         self.frame_manager
             .flush_all(self.context.device(), self.context.allocator());
 
-        // Destroy frame context Vulkan objects (fences, command pools)
-        self.frame_manager.destroy(self.context.device());
+        // Destroy frame context Vulkan objects (fences, command pools, linear allocators)
+        self.frame_manager
+            .destroy(self.context.device(), self.context.allocator());
 
-        // Destroy cached samplers
+        // Destroy cached samplers and sync pools
         self.sampler_cache.destroy(self.context.device());
+        self.semaphore_pool.destroy(self.context.device());
+        self.fence_pool.destroy(self.context.device());
 
         // Context Drop handles device, instance, allocator, debug messenger
     }
