@@ -70,3 +70,48 @@ pub trait RenderPassCallback {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_output_is_write() {
+        assert!(AccessType::ColorOutput.is_write());
+    }
+
+    #[test]
+    fn color_input_is_write() {
+        assert!(AccessType::ColorInput.is_write());
+    }
+
+    #[test]
+    fn depth_stencil_output_is_write() {
+        assert!(AccessType::DepthStencilOutput.is_write());
+    }
+
+    #[test]
+    fn storage_write_is_write() {
+        assert!(AccessType::StorageWrite.is_write());
+    }
+
+    #[test]
+    fn texture_input_is_not_write() {
+        assert!(!AccessType::TextureInput.is_write());
+    }
+
+    #[test]
+    fn storage_read_is_not_write() {
+        assert!(!AccessType::StorageRead.is_write());
+    }
+
+    #[test]
+    fn depth_stencil_input_is_not_write() {
+        assert!(!AccessType::DepthStencilInput.is_write());
+    }
+
+    #[test]
+    fn attachment_input_is_not_write() {
+        assert!(!AccessType::AttachmentInput.is_write());
+    }
+}

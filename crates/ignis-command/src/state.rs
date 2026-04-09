@@ -7,7 +7,7 @@ use ash::vk;
 /// All fields that affect `VkGraphicsPipelineCreateInfo` are tracked here.
 /// On draw, this state is hashed together with the active program and render pass
 /// to look up or compile the correct pipeline.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StaticPipelineState {
     /// Primitive topology.
     pub topology: vk::PrimitiveTopology,
@@ -66,5 +66,105 @@ impl Default for StaticPipelineState {
             color_write_mask: vk::ColorComponentFlags::RGBA,
             primitive_restart: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+
+    fn hash_state(state: &StaticPipelineState) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        state.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn default_state_values() {
+        let state = StaticPipelineState::default();
+        assert_eq!(state.topology, vk::PrimitiveTopology::TRIANGLE_LIST);
+        assert_eq!(state.cull_mode, vk::CullModeFlags::BACK);
+        assert_eq!(state.front_face, vk::FrontFace::COUNTER_CLOCKWISE);
+        assert_eq!(state.polygon_mode, vk::PolygonMode::FILL);
+        assert!(!state.depth_test);
+        assert!(!state.depth_write);
+        assert_eq!(state.depth_compare, vk::CompareOp::LESS_OR_EQUAL);
+        assert!(!state.stencil_test);
+        assert!(!state.blend_enable);
+        assert!(!state.primitive_restart);
+    }
+
+    #[test]
+    fn equal_states_same_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState::default();
+        assert_eq!(a, b);
+        assert_eq!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn different_topology_different_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            topology: vk::PrimitiveTopology::LINE_LIST,
+            ..Default::default()
+        };
+        assert_ne!(a, b);
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn different_cull_mode_different_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            cull_mode: vk::CullModeFlags::FRONT,
+            ..Default::default()
+        };
+        assert_ne!(a, b);
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn depth_test_toggle_different_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            depth_test: true,
+            depth_write: true,
+            ..Default::default()
+        };
+        assert_ne!(a, b);
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn blend_state_different_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            blend_enable: true,
+            src_color_blend: vk::BlendFactor::SRC_ALPHA,
+            dst_color_blend: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+            ..Default::default()
+        };
+        assert_ne!(a, b);
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn hash_stability() {
+        // Same state should always produce the same hash within a run.
+        let state = StaticPipelineState::default();
+        let h1 = hash_state(&state);
+        let h2 = hash_state(&state);
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn clone_produces_equal() {
+        let a = StaticPipelineState::default();
+        let b = a.clone();
+        assert_eq!(a, b);
+        assert_eq!(hash_state(&a), hash_state(&b));
     }
 }

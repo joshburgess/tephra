@@ -336,3 +336,355 @@ fn push_unique(vec: &mut Vec<usize>, val: usize) {
         vec.push(val);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::RenderGraph;
+    use crate::resource::{AttachmentInfo, BufferInfo};
+
+    fn color_attachment() -> AttachmentInfo {
+        AttachmentInfo::absolute(vk::Format::R8G8B8A8_UNORM, 256, 256)
+    }
+
+    fn depth_attachment() -> AttachmentInfo {
+        AttachmentInfo::absolute(vk::Format::D32_SFLOAT, 256, 256)
+    }
+
+    // -- needs_barrier --
+
+    #[test]
+    fn needs_barrier_different_access_types() {
+        assert!(needs_barrier(AccessType::ColorOutput, AccessType::TextureInput));
+        assert!(needs_barrier(AccessType::StorageWrite, AccessType::StorageRead));
+        assert!(needs_barrier(AccessType::DepthStencilOutput, AccessType::DepthStencilInput));
+    }
+
+    #[test]
+    fn needs_barrier_same_write_access() {
+        assert!(needs_barrier(AccessType::ColorOutput, AccessType::ColorOutput));
+        assert!(needs_barrier(AccessType::StorageWrite, AccessType::StorageWrite));
+    }
+
+    #[test]
+    fn no_barrier_same_read_access() {
+        assert!(!needs_barrier(AccessType::TextureInput, AccessType::TextureInput));
+        assert!(!needs_barrier(AccessType::StorageRead, AccessType::StorageRead));
+        assert!(!needs_barrier(
+            AccessType::DepthStencilInput,
+            AccessType::DepthStencilInput
+        ));
+    }
+
+    // -- access_info --
+
+    #[test]
+    fn access_info_color_output() {
+        let (stage, acc, layout) = access_info(AccessType::ColorOutput);
+        assert_eq!(stage, vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT);
+        assert!(acc.contains(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE));
+        assert_eq!(layout, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+    }
+
+    #[test]
+    fn access_info_texture_input() {
+        let (stage, _acc, layout) = access_info(AccessType::TextureInput);
+        assert_eq!(stage, vk::PipelineStageFlags2::FRAGMENT_SHADER);
+        assert_eq!(layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+    }
+
+    #[test]
+    fn access_info_storage_write() {
+        let (_stage, acc, layout) = access_info(AccessType::StorageWrite);
+        assert!(acc.contains(vk::AccessFlags2::SHADER_WRITE));
+        assert_eq!(layout, vk::ImageLayout::GENERAL);
+    }
+
+    #[test]
+    fn access_info_depth_stencil() {
+        let (_, _, layout_out) = access_info(AccessType::DepthStencilOutput);
+        let (_, _, layout_in) = access_info(AccessType::DepthStencilInput);
+        assert_eq!(layout_out, vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        assert_eq!(layout_in, vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    }
+
+    // -- Empty graph --
+
+    #[test]
+    fn empty_graph() {
+        let graph = RenderGraph::new();
+        let compiled = graph.bake();
+        assert_eq!(compiled.step_count(), 0);
+        assert!(compiled.backbuffer().is_none());
+    }
+
+    // -- Single pass --
+
+    #[test]
+    fn single_pass() {
+        let mut graph = RenderGraph::new();
+        let mut pass = graph.add_pass("only");
+        let r = pass.add_color_output("out", color_attachment());
+        graph.set_backbuffer_source(r);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 1);
+        assert_eq!(compiled.step_name(0), "only");
+    }
+
+    // -- Linear chain: A → B → C --
+
+    #[test]
+    fn linear_chain_ordering() {
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        let r1 = a.add_color_output("r1", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_texture_input(r1);
+        let r2 = b.add_color_output("r2", color_attachment());
+
+        let mut c = graph.add_pass("C");
+        c.add_texture_input(r2);
+        let r3 = c.add_color_output("r3", color_attachment());
+
+        graph.set_backbuffer_source(r3);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 3);
+        assert_eq!(compiled.step_name(0), "A");
+        assert_eq!(compiled.step_name(1), "B");
+        assert_eq!(compiled.step_name(2), "C");
+    }
+
+    // -- Linear chain barrier placement --
+
+    #[test]
+    fn linear_chain_barriers() {
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        let r1 = a.add_color_output("r1", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_texture_input(r1);
+        let r2 = b.add_color_output("r2", color_attachment());
+
+        graph.set_backbuffer_source(r2);
+        let compiled = graph.bake();
+
+        // Step 0 (A): no barriers (first access to r1)
+        assert!(compiled.barriers[0].is_empty());
+        // Step 1 (B): barrier on r1 (ColorOutput → TextureInput)
+        assert_eq!(compiled.barriers[1].len(), 1);
+        assert_eq!(compiled.barriers[1][0].src_access, AccessType::ColorOutput);
+        assert_eq!(compiled.barriers[1][0].dst_access, AccessType::TextureInput);
+    }
+
+    // -- Diamond dependency: A writes r1+r2, B reads r1, C reads r2, D reads both --
+
+    #[test]
+    fn diamond_dependency() {
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        let r1 = a.add_color_output("r1", color_attachment());
+        let r2 = a.add_color_output("r2", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_texture_input(r1);
+        let r3 = b.add_color_output("r3", color_attachment());
+
+        let mut c = graph.add_pass("C");
+        c.add_texture_input(r2);
+        let r4 = c.add_color_output("r4", color_attachment());
+
+        let mut d = graph.add_pass("D");
+        d.add_texture_input(r3);
+        d.add_texture_input(r4);
+        let r5 = d.add_color_output("r5", color_attachment());
+
+        graph.set_backbuffer_source(r5);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 4);
+
+        // A must be first, D must be last
+        assert_eq!(compiled.step_name(0), "A");
+        assert_eq!(compiled.step_name(3), "D");
+
+        // B and C must be in the middle (order between them is unspecified)
+        let middle: Vec<&str> = (1..3).map(|i| compiled.step_name(i)).collect();
+        assert!(middle.contains(&"B"));
+        assert!(middle.contains(&"C"));
+    }
+
+    // -- Dead pass culling --
+
+    #[test]
+    fn dead_pass_culled() {
+        let mut graph = RenderGraph::new();
+
+        let mut live = graph.add_pass("live");
+        let r = live.add_color_output("out", color_attachment());
+
+        // This pass is not connected to the backbuffer
+        let mut dead = graph.add_pass("dead");
+        dead.add_color_output("dead_out", color_attachment());
+
+        graph.set_backbuffer_source(r);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 1);
+        assert_eq!(compiled.step_name(0), "live");
+    }
+
+    #[test]
+    fn no_backbuffer_all_reachable() {
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        a.add_color_output("r1", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_color_output("r2", color_attachment());
+
+        // No backbuffer set — all passes should be included
+        let compiled = graph.bake();
+        assert_eq!(compiled.step_count(), 2);
+    }
+
+    // -- Compute pass --
+
+    #[test]
+    fn compute_pass_flagged() {
+        let mut graph = RenderGraph::new();
+
+        let mut pass = graph.add_pass("comp");
+        pass.set_compute();
+        let r = pass.add_storage_output(
+            "buf",
+            BufferInfo {
+                size: 1024,
+                usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+            },
+        );
+        graph.set_backbuffer_source(r);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 1);
+        assert!(compiled.step_is_compute(0));
+    }
+
+    // -- Depth/stencil dependency --
+
+    #[test]
+    fn depth_stencil_dependency() {
+        let mut graph = RenderGraph::new();
+
+        let mut depth_pass = graph.add_pass("depth_prepass");
+        let depth = depth_pass.add_depth_stencil_output("depth", depth_attachment());
+
+        let mut color_pass = graph.add_pass("color");
+        color_pass.add_depth_stencil_input(depth);
+        let color = color_pass.add_color_output("color", color_attachment());
+
+        graph.set_backbuffer_source(color);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 2);
+        assert_eq!(compiled.step_name(0), "depth_prepass");
+        assert_eq!(compiled.step_name(1), "color");
+    }
+
+    // -- Read-modify-write (ColorInput) --
+
+    #[test]
+    fn color_input_read_modify_write() {
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        let r = a.add_color_output("target", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_color_input(r);
+        // B modifies r in-place, no new output — use r as backbuffer
+        // But we need some output to be the backbuffer. Let's add one.
+        let out = b.add_color_output("final", color_attachment());
+
+        graph.set_backbuffer_source(out);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 2);
+        assert_eq!(compiled.step_name(0), "A");
+        assert_eq!(compiled.step_name(1), "B");
+    }
+
+    // -- Multiple readers from one writer --
+
+    #[test]
+    fn multiple_readers() {
+        let mut graph = RenderGraph::new();
+
+        let mut writer = graph.add_pass("writer");
+        let r = writer.add_color_output("shared", color_attachment());
+
+        let mut reader1 = graph.add_pass("reader1");
+        reader1.add_texture_input(r);
+        let out1 = reader1.add_color_output("out1", color_attachment());
+
+        let mut reader2 = graph.add_pass("reader2");
+        reader2.add_texture_input(r);
+        let out2 = reader2.add_color_output("out2", color_attachment());
+
+        let mut merge = graph.add_pass("merge");
+        merge.add_texture_input(out1);
+        merge.add_texture_input(out2);
+        let final_out = merge.add_color_output("final", color_attachment());
+
+        graph.set_backbuffer_source(final_out);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 4);
+        // Writer must come first
+        assert_eq!(compiled.step_name(0), "writer");
+        // Merge must come last
+        assert_eq!(compiled.step_name(3), "merge");
+    }
+
+    // -- Transitive culling --
+
+    #[test]
+    fn transitive_culling() {
+        let mut graph = RenderGraph::new();
+
+        // Live chain: A → B (backbuffer)
+        let mut a = graph.add_pass("A");
+        let r = a.add_color_output("r", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_texture_input(r);
+        let out = b.add_color_output("out", color_attachment());
+
+        // Dead chain: C → D (not connected to backbuffer)
+        let mut c = graph.add_pass("C");
+        let dead_r = c.add_color_output("dead_r", color_attachment());
+
+        let mut d = graph.add_pass("D");
+        d.add_texture_input(dead_r);
+        d.add_color_output("dead_out", color_attachment());
+
+        graph.set_backbuffer_source(out);
+        let compiled = graph.bake();
+
+        assert_eq!(compiled.step_count(), 2);
+        let names: Vec<&str> = (0..compiled.step_count())
+            .map(|i| compiled.step_name(i))
+            .collect();
+        assert!(names.contains(&"A"));
+        assert!(names.contains(&"B"));
+        assert!(!names.contains(&"C"));
+        assert!(!names.contains(&"D"));
+    }
+}

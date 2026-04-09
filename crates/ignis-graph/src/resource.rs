@@ -94,3 +94,109 @@ pub(crate) struct ResourceDeclaration {
     pub name: String,
     pub info: ResourceInfo,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- AttachmentInfo::absolute --
+
+    #[test]
+    fn absolute_attachment_dimensions() {
+        let info = AttachmentInfo::absolute(vk::Format::R8G8B8A8_UNORM, 1920, 1080);
+        let extent = info.resolve_extent(vk::Extent2D {
+            width: 800,
+            height: 600,
+        });
+        // Absolute dimensions ignore swapchain extent
+        assert_eq!(extent.width, 1920);
+        assert_eq!(extent.height, 1080);
+    }
+
+    // -- AttachmentInfo::swapchain_relative --
+
+    #[test]
+    fn swapchain_relative_full_scale() {
+        let info = AttachmentInfo::swapchain_relative(vk::Format::R8G8B8A8_UNORM, 1.0);
+        let extent = info.resolve_extent(vk::Extent2D {
+            width: 1920,
+            height: 1080,
+        });
+        assert_eq!(extent.width, 1920);
+        assert_eq!(extent.height, 1080);
+    }
+
+    #[test]
+    fn swapchain_relative_half_scale() {
+        let info = AttachmentInfo::swapchain_relative(vk::Format::R8G8B8A8_UNORM, 0.5);
+        let extent = info.resolve_extent(vk::Extent2D {
+            width: 1920,
+            height: 1080,
+        });
+        assert_eq!(extent.width, 960);
+        assert_eq!(extent.height, 540);
+    }
+
+    #[test]
+    fn swapchain_relative_minimum_clamp() {
+        // Even with a tiny scale, dimensions should clamp to at least 1
+        let info = AttachmentInfo::swapchain_relative(vk::Format::R8G8B8A8_UNORM, 0.001);
+        let extent = info.resolve_extent(vk::Extent2D {
+            width: 100,
+            height: 100,
+        });
+        assert!(extent.width >= 1);
+        assert!(extent.height >= 1);
+    }
+
+    #[test]
+    fn resolve_extent_mixed_size_class() {
+        // Width absolute, height relative
+        let info = AttachmentInfo {
+            format: vk::Format::R8G8B8A8_UNORM,
+            width: SizeClass::Absolute(512),
+            height: SizeClass::SwapchainRelative(0.5),
+            samples: vk::SampleCountFlags::TYPE_1,
+        };
+        let extent = info.resolve_extent(vk::Extent2D {
+            width: 1920,
+            height: 1080,
+        });
+        assert_eq!(extent.width, 512);
+        assert_eq!(extent.height, 540);
+    }
+
+    // -- Default samples --
+
+    #[test]
+    fn absolute_defaults_to_single_sample() {
+        let info = AttachmentInfo::absolute(vk::Format::R8G8B8A8_UNORM, 100, 100);
+        assert_eq!(info.samples, vk::SampleCountFlags::TYPE_1);
+    }
+
+    #[test]
+    fn swapchain_relative_defaults_to_single_sample() {
+        let info = AttachmentInfo::swapchain_relative(vk::Format::R8G8B8A8_UNORM, 1.0);
+        assert_eq!(info.samples, vk::SampleCountFlags::TYPE_1);
+    }
+
+    // -- ResourceHandle equality --
+
+    #[test]
+    fn resource_handle_equality() {
+        let a = ResourceHandle { index: 0 };
+        let b = ResourceHandle { index: 0 };
+        let c = ResourceHandle { index: 1 };
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn resource_handle_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ResourceHandle { index: 5 });
+        assert!(set.contains(&ResourceHandle { index: 5 }));
+        assert!(!set.contains(&ResourceHandle { index: 6 }));
+    }
+}

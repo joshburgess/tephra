@@ -123,3 +123,166 @@ pub fn find_alias_groups(graph: &CompiledGraph) -> Vec<AliasGroup> {
 
     groups
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::RenderGraph;
+    use crate::resource::AttachmentInfo;
+    use ash::vk;
+
+    fn color_attachment() -> AttachmentInfo {
+        AttachmentInfo::absolute(vk::Format::R8G8B8A8_UNORM, 256, 256)
+    }
+
+    // -- compute_lifetimes --
+
+    #[test]
+    fn lifetimes_single_pass() {
+        let mut graph = RenderGraph::new();
+        let mut p = graph.add_pass("P");
+        let r = p.add_color_output("out", color_attachment());
+        graph.set_backbuffer_source(r);
+        let compiled = graph.bake();
+
+        let lifetimes = compute_lifetimes(&compiled);
+        assert_eq!(lifetimes.len(), 1);
+        assert_eq!(lifetimes[0].first_use, 0);
+        assert_eq!(lifetimes[0].last_use, 0);
+    }
+
+    #[test]
+    fn lifetimes_linear_chain() {
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        let r1 = a.add_color_output("r1", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_texture_input(r1);
+        let r2 = b.add_color_output("r2", color_attachment());
+
+        let mut c = graph.add_pass("C");
+        c.add_texture_input(r2);
+        let r3 = c.add_color_output("r3", color_attachment());
+
+        graph.set_backbuffer_source(r3);
+        let compiled = graph.bake();
+
+        let lifetimes = compute_lifetimes(&compiled);
+        // r1 used in step 0 (write) and step 1 (read)
+        let r1_lt = lifetimes.iter().find(|l| l.resource == r1.index).unwrap();
+        assert_eq!(r1_lt.first_use, 0);
+        assert_eq!(r1_lt.last_use, 1);
+        // r3 only used in step 2
+        let r3_lt = lifetimes.iter().find(|l| l.resource == r3.index).unwrap();
+        assert_eq!(r3_lt.first_use, 2);
+        assert_eq!(r3_lt.last_use, 2);
+    }
+
+    #[test]
+    fn lifetimes_empty_graph() {
+        let graph = RenderGraph::new();
+        let compiled = graph.bake();
+        let lifetimes = compute_lifetimes(&compiled);
+        assert!(lifetimes.is_empty());
+    }
+
+    // -- find_alias_groups --
+
+    #[test]
+    fn no_aliasing_with_overlapping_lifetimes() {
+        // A writes r1, B reads r1 and writes r2 — lifetimes overlap at step 1
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        let r1 = a.add_color_output("r1", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_texture_input(r1);
+        let r2 = b.add_color_output("r2", color_attachment());
+
+        graph.set_backbuffer_source(r2);
+        let compiled = graph.bake();
+
+        let groups = find_alias_groups(&compiled);
+        // r1 lives [0,1], r2 lives [1,1] — they overlap at step 1
+        // No alias group with 2+ resources possible
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn aliasing_with_non_overlapping_lifetimes() {
+        // A writes r1, B reads r1 writes r2, C reads r2 writes r3
+        // r1 lives [0,1], r3 lives [2,2] — non-overlapping, can alias
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        let r1 = a.add_color_output("r1", color_attachment());
+
+        let mut b = graph.add_pass("B");
+        b.add_texture_input(r1);
+        let r2 = b.add_color_output("r2", color_attachment());
+
+        let mut c = graph.add_pass("C");
+        c.add_texture_input(r2);
+        let r3 = c.add_color_output("r3", color_attachment());
+
+        graph.set_backbuffer_source(r3);
+        let compiled = graph.bake();
+
+        let groups = find_alias_groups(&compiled);
+        // r1 [0,1] and r3 [2,2] don't overlap — should alias
+        assert!(!groups.is_empty());
+        let aliased: Vec<u32> = groups.iter().flat_map(|g| &g.resources).copied().collect();
+        assert!(aliased.contains(&r1.index));
+        assert!(aliased.contains(&r3.index));
+    }
+
+    #[test]
+    fn buffers_not_aliased() {
+        // Only attachment resources are aliased, not buffers.
+        let mut graph = RenderGraph::new();
+
+        let mut a = graph.add_pass("A");
+        a.set_compute();
+        let buf1 = a.add_storage_output(
+            "buf1",
+            crate::resource::BufferInfo {
+                size: 1024,
+                usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+            },
+        );
+
+        let mut b = graph.add_pass("B");
+        b.set_compute();
+        b.add_storage_input(buf1);
+        let buf2 = b.add_storage_output(
+            "buf2",
+            crate::resource::BufferInfo {
+                size: 1024,
+                usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+            },
+        );
+
+        graph.set_backbuffer_source(buf2);
+        let compiled = graph.bake();
+
+        let groups = find_alias_groups(&compiled);
+        // Buffers shouldn't be aliased — groups should be empty
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn single_resource_no_group() {
+        // A single attachment can't form an alias group (need 2+).
+        let mut graph = RenderGraph::new();
+        let mut p = graph.add_pass("P");
+        let r = p.add_color_output("only", color_attachment());
+        graph.set_backbuffer_source(r);
+        let compiled = graph.bake();
+
+        let groups = find_alias_groups(&compiled);
+        assert!(groups.is_empty());
+    }
+}
