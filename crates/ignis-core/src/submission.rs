@@ -14,11 +14,9 @@ impl Device {
     /// the same frame.
     pub fn request_command_buffer_raw(
         &self,
-        _queue_type: QueueType,
+        queue_type: QueueType,
     ) -> Result<vk::CommandBuffer, DeviceError> {
-        // For now, all command buffers come from the graphics command pool.
-        // Per-queue pools will be added when multi-queue submission is implemented.
-        let pool = self.current_command_pool();
+        let pool = self.command_pool_for_queue(queue_type);
 
         let alloc_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(pool)

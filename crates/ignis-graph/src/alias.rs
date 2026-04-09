@@ -24,7 +24,7 @@ pub struct ResourceLifetime {
 #[derive(Debug, Clone)]
 pub struct AliasGroup {
     /// Resource indices that can alias.
-    pub(crate) resources: Vec<u32>,
+    pub resources: Vec<u32>,
 }
 
 /// Compute the lifetime (first use, last use) of each resource.

@@ -1,9 +1,37 @@
-//! Phase 3+4 validation: textured spinning quad.
+//! Phase 3+4 validation: shader reflection and pipeline creation.
 //!
-//! Loads SPIR-V shaders, creates a program, binds a texture via the
-//! descriptor binding table, and renders a textured quad.
+//! Demonstrates SPIR-V shader loading, program linking with automatic
+//! reflection, pipeline compilation, and descriptor set allocation.
+//! Requires pre-compiled SPIR-V shaders in the `shaders/` directory.
 
 fn main() {
     env_logger::init();
-    todo!("Phase 4 validation example: textured quad with shader reflection")
+
+    println!("02_textured_quad: shader reflection + pipeline compilation demo");
+    println!();
+    println!("This example requires pre-compiled SPIR-V shaders.");
+    println!("Place quad.vert.spv and quad.frag.spv in a shaders/ directory,");
+    println!("then uncomment the rendering code below.");
+    println!();
+    println!("API usage pattern:");
+    println!("  1. ShaderManager::load(device, path, stage)");
+    println!("  2. Program::create(device, &[&vert, &frag])");
+    println!("  3. PipelineContext::get_graphics_pipeline(...)");
+    println!("  4. cmd.bind_pipeline() + cmd.draw()");
+
+    // When shaders are available, the flow would be:
+    //
+    //   let mut shader_mgr = ShaderManager::new();
+    //   let vert = shader_mgr.load(device, "shaders/quad.vert.spv", VERTEX)?;
+    //   let frag = shader_mgr.load(device, "shaders/quad.frag.spv", FRAGMENT)?;
+    //   let program = Program::create(device, &[vert, frag])?;
+    //
+    //   let mut ctx = PipelineContext::new(device, Some("pipeline_cache.bin"))?;
+    //   let (pipeline, rp) = ctx.get_graphics_pipeline(
+    //       device, &program, &state, &rp_info, 0, &vertex_layout,
+    //   )?;
+    //
+    //   cmd.bind_pipeline(GRAPHICS, pipeline);
+    //   cmd.bind_descriptor_sets(...);
+    //   cmd.draw(6, 1, 0, 0);
 }

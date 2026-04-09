@@ -1,6 +1,6 @@
 //! Frame context ring buffer and deferred deletion.
 //!
-//! Manages a fixed number of in-flight frames, each with its own command pool,
+//! Manages a fixed number of in-flight frames, each with its own command pool(s),
 //! fence, and deletion queue. Resources scheduled for deletion are freed when
 //! the corresponding frame's fence signals.
 
@@ -8,6 +8,7 @@ use ash::vk;
 use gpu_allocator::vulkan as vma;
 use parking_lot::Mutex;
 
+use crate::context::QueueType;
 use crate::linear_alloc::LinearAllocatorPool;
 
 /// Default number of frames that can be in flight simultaneously.
@@ -59,12 +60,16 @@ impl DeletionQueue {
     }
 }
 
-/// A single frame's resources: fence, command pool, deletion queue, and linear allocator pool.
+/// A single frame's resources: fence, command pools, deletion queue, and linear allocator pool.
 pub(crate) struct FrameContext {
     /// Fence signaled when this frame's GPU work completes.
     pub fence: vk::Fence,
     /// Command pool for this frame's graphics command buffers.
     pub graphics_command_pool: vk::CommandPool,
+    /// Command pool for async compute (if dedicated compute queue exists).
+    pub compute_command_pool: Option<vk::CommandPool>,
+    /// Command pool for transfer operations (if dedicated transfer queue exists).
+    pub transfer_command_pool: Option<vk::CommandPool>,
     /// Deferred deletions to process when the fence signals.
     pub deletion_queue: DeletionQueue,
     /// Bump allocator pool for transient per-frame data.
@@ -74,14 +79,38 @@ pub(crate) struct FrameContext {
 }
 
 impl FrameContext {
-    /// Create a new frame context with the given fence and command pool.
-    fn new(fence: vk::Fence, command_pool: vk::CommandPool) -> Self {
+    /// Create a new frame context with the given fence and command pools.
+    fn new(
+        fence: vk::Fence,
+        graphics_command_pool: vk::CommandPool,
+        compute_command_pool: Option<vk::CommandPool>,
+        transfer_command_pool: Option<vk::CommandPool>,
+    ) -> Self {
         Self {
             fence,
-            graphics_command_pool: command_pool,
+            graphics_command_pool,
+            compute_command_pool,
+            transfer_command_pool,
             deletion_queue: DeletionQueue::new(),
             linear_allocator_pool: LinearAllocatorPool::new(),
             fence_submitted: false,
+        }
+    }
+
+    /// Get the command pool for the given queue type.
+    ///
+    /// Falls back to the graphics pool if no dedicated pool exists.
+    pub fn command_pool(&self, queue_type: QueueType) -> vk::CommandPool {
+        match queue_type {
+            QueueType::Graphics => self.graphics_command_pool,
+            QueueType::Compute => {
+                self.compute_command_pool
+                    .unwrap_or(self.graphics_command_pool)
+            }
+            QueueType::Transfer => {
+                self.transfer_command_pool
+                    .unwrap_or(self.graphics_command_pool)
+            }
         }
     }
 }
@@ -100,27 +129,62 @@ impl FrameContextManager {
     /// Create a new frame context manager.
     ///
     /// Creates `frame_overlap` frame contexts, each with its own fence and
-    /// command pool on the graphics queue family.
+    /// command pool(s). Dedicated compute/transfer pools are only created
+    /// when their queue families differ from the graphics family.
     pub fn new(
         device: &ash::Device,
-        graphics_family_index: u32,
+        graphics_family: u32,
+        compute_family: Option<u32>,
+        transfer_family: Option<u32>,
         frame_overlap: usize,
     ) -> Result<Self, vk::Result> {
         let mut frames = Vec::with_capacity(frame_overlap);
 
         for _ in 0..frame_overlap {
-            let fence_ci = vk::FenceCreateInfo::default()
-                .flags(vk::FenceCreateFlags::SIGNALED);
+            let fence_ci =
+                vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
             // SAFETY: device is valid, fence_ci is well-formed.
             let fence = unsafe { device.create_fence(&fence_ci, None)? };
 
             let pool_ci = vk::CommandPoolCreateInfo::default()
-                .queue_family_index(graphics_family_index)
+                .queue_family_index(graphics_family)
                 .flags(vk::CommandPoolCreateFlags::TRANSIENT);
             // SAFETY: device is valid, pool_ci specifies a valid queue family.
-            let command_pool = unsafe { device.create_command_pool(&pool_ci, None)? };
+            let graphics_pool = unsafe { device.create_command_pool(&pool_ci, None)? };
 
-            frames.push(FrameContext::new(fence, command_pool));
+            let compute_pool = if let Some(family) = compute_family {
+                let ci = vk::CommandPoolCreateInfo::default()
+                    .queue_family_index(family)
+                    .flags(vk::CommandPoolCreateFlags::TRANSIENT);
+                // SAFETY: device is valid, ci specifies a valid queue family.
+                Some(unsafe { device.create_command_pool(&ci, None)? })
+            } else {
+                None
+            };
+
+            let transfer_pool = if let Some(family) = transfer_family {
+                let ci = vk::CommandPoolCreateInfo::default()
+                    .queue_family_index(family)
+                    .flags(vk::CommandPoolCreateFlags::TRANSIENT);
+                // SAFETY: device is valid, ci specifies a valid queue family.
+                Some(unsafe { device.create_command_pool(&ci, None)? })
+            } else {
+                None
+            };
+
+            frames.push(FrameContext::new(
+                fence,
+                graphics_pool,
+                compute_pool,
+                transfer_pool,
+            ));
+        }
+
+        if compute_family.is_some() {
+            log::info!("Created dedicated compute command pools");
+        }
+        if transfer_family.is_some() {
+            log::info!("Created dedicated transfer command pools");
         }
 
         Ok(Self {
@@ -136,7 +200,7 @@ impl FrameContextManager {
     /// 1. Advances the ring buffer index
     /// 2. Waits on the frame's fence (ensuring GPU is done with old resources)
     /// 3. Processes deferred deletions
-    /// 4. Resets the command pool
+    /// 4. Resets all command pools
     pub fn begin_frame(
         &mut self,
         device: &ash::Device,
@@ -163,13 +227,19 @@ impl FrameContextManager {
         // Reset linear allocator pool — all transient allocations from this frame are recycled
         frame.linear_allocator_pool.reset();
 
-        // Reset command pool — all command buffers from this frame are now invalid
-        // SAFETY: device and command pool are valid; we've waited on the fence.
+        // Reset command pools — all command buffers from this frame are now invalid
+        // SAFETY: device and command pools are valid; we've waited on the fence.
         unsafe {
             device.reset_command_pool(
                 frame.graphics_command_pool,
                 vk::CommandPoolResetFlags::empty(),
             )?;
+            if let Some(pool) = frame.compute_command_pool {
+                device.reset_command_pool(pool, vk::CommandPoolResetFlags::empty())?;
+            }
+            if let Some(pool) = frame.transfer_command_pool {
+                device.reset_command_pool(pool, vk::CommandPoolResetFlags::empty())?;
+            }
         }
 
         Ok(())
@@ -224,6 +294,12 @@ impl FrameContextManager {
             unsafe {
                 device.destroy_fence(frame.fence, None);
                 device.destroy_command_pool(frame.graphics_command_pool, None);
+                if let Some(pool) = frame.compute_command_pool {
+                    device.destroy_command_pool(pool, None);
+                }
+                if let Some(pool) = frame.transfer_command_pool {
+                    device.destroy_command_pool(pool, None);
+                }
             }
         }
         self.frames.clear();

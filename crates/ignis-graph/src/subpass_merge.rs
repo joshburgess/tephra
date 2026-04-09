@@ -13,7 +13,7 @@ use crate::pass::AccessType;
 #[derive(Debug, Clone)]
 pub struct MergeGroup {
     /// Indices into `CompiledGraph::pass_order` for passes in this group.
-    pub(crate) steps: Vec<usize>,
+    pub steps: Vec<usize>,
 }
 
 /// Analyze compiled pass order for subpass merge opportunities.

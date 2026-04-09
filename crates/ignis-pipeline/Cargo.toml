@@ -14,3 +14,8 @@ ignis-descriptors = { workspace = true }
 spirv-reflect = { workspace = true }
 log = { workspace = true }
 rustc-hash = { workspace = true }
+thiserror = { workspace = true }
+notify = { workspace = true, optional = true }
+
+[features]
+hot-reload = ["dep:notify"]

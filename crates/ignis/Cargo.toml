@@ -13,9 +13,13 @@ ignis-descriptors = { workspace = true }
 ignis-pipeline = { workspace = true }
 ignis-wsi = { workspace = true }
 ignis-graph = { workspace = true }
+ash = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 env_logger = { workspace = true }
+winit = { workspace = true }
 
 [[example]]
 name = "01_triangle"

@@ -31,6 +31,22 @@ pub struct CommandBuffer {
 }
 
 impl CommandBuffer {
+    /// Create a `CommandBuffer` wrapper from a raw Vulkan command buffer.
+    ///
+    /// The caller is responsible for ensuring the raw handle is valid
+    /// and has been begun for recording.
+    pub fn from_raw(
+        raw: vk::CommandBuffer,
+        cb_type: CommandBufferType,
+        device: ash::Device,
+    ) -> Self {
+        Self {
+            raw,
+            cb_type,
+            device,
+        }
+    }
+
     /// The raw Vulkan command buffer handle.
     pub fn raw(&self) -> vk::CommandBuffer {
         self.raw

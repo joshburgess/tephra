@@ -29,6 +29,7 @@ rustc-hash = "2.0"
 bitflags = "2.6"
 thiserror = "2.0"
 bytemuck = { version = "1.18", features = ["derive"] }
+notify = "7.0"
 
 # Internal crates
 ignis-core = { path = "crates/ignis-core" }

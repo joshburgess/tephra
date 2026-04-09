@@ -10,3 +10,4 @@ pub mod program;
 pub mod render_pass;
 pub mod render_state;
 pub mod shader;
+pub mod shader_manager;

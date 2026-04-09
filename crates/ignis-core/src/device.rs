@@ -65,9 +65,20 @@ impl Device {
 
     fn init(context: Context) -> Result<Self, DeviceError> {
         let graphics_family = context.queue(QueueType::Graphics).family_index;
-        let frame_manager =
-            FrameContextManager::new(context.device(), graphics_family, FRAME_OVERLAP)
-                .map_err(DeviceError::Vulkan)?;
+        let compute_family = context.queue(QueueType::Compute).family_index;
+        let transfer_family = context.queue(QueueType::Transfer).family_index;
+
+        let dedicated_compute = (compute_family != graphics_family).then_some(compute_family);
+        let dedicated_transfer = (transfer_family != graphics_family).then_some(transfer_family);
+
+        let frame_manager = FrameContextManager::new(
+            context.device(),
+            graphics_family,
+            dedicated_compute,
+            dedicated_transfer,
+            FRAME_OVERLAP,
+        )
+        .map_err(DeviceError::Vulkan)?;
 
         let sampler_cache =
             SamplerCache::new(context.device()).map_err(DeviceError::Vulkan)?;
@@ -115,6 +126,13 @@ impl Device {
     /// The current frame's graphics command pool.
     pub fn current_command_pool(&self) -> vk::CommandPool {
         self.frame_manager.current_frame().graphics_command_pool
+    }
+
+    /// The current frame's command pool for the given queue type.
+    ///
+    /// Falls back to the graphics pool if no dedicated pool exists.
+    pub fn command_pool_for_queue(&self, queue_type: QueueType) -> vk::CommandPool {
+        self.frame_manager.current_frame().command_pool(queue_type)
     }
 
     /// The monotonically increasing frame count.
