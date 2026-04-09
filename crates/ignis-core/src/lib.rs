@@ -11,4 +11,5 @@ pub mod frame_context;
 pub mod handles;
 pub mod image;
 pub mod memory;
+mod resources;
 pub mod sampler;
