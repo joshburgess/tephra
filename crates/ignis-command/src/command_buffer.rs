@@ -298,7 +298,7 @@ impl CommandBuffer {
         }
     }
 
-    /// Push constants.
+    /// Push constants from a raw byte slice.
     pub fn push_constants(
         &mut self,
         layout: vk::PipelineLayout,
@@ -311,6 +311,18 @@ impl CommandBuffer {
             self.device
                 .cmd_push_constants(self.raw, layout, stage_flags, offset, data);
         }
+    }
+
+    /// Push constants from a typed value.
+    ///
+    /// Converts `data` to bytes via [`bytemuck`] and pushes at offset 0.
+    pub fn push_constants_typed<T: bytemuck::Pod>(
+        &mut self,
+        layout: vk::PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        data: &T,
+    ) {
+        self.push_constants(layout, stage_flags, 0, bytemuck::bytes_of(data));
     }
 
     /// Bind descriptor sets.
