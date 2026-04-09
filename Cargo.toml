@@ -38,3 +38,8 @@ ignis-descriptors = { path = "crates/ignis-descriptors" }
 ignis-pipeline = { path = "crates/ignis-pipeline" }
 ignis-wsi = { path = "crates/ignis-wsi" }
 ignis-graph = { path = "crates/ignis-graph" }
+
+# spirv-reflect 0.2.3 has a UB bug: slice::from_raw_parts(null, 0) in convert.rs.
+# Disable debug-mode UB checks for that crate until upstream fixes it.
+[profile.dev.package.spirv-reflect]
+debug-assertions = false
