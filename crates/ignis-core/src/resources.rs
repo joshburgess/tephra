@@ -263,6 +263,170 @@ impl Device {
         self.schedule_deletion(DeferredDeletion::ImageView(view.raw));
     }
 
+    /// Create an image and upload pixel data via a staging buffer.
+    ///
+    /// Creates a host-visible staging buffer, copies the pixel data into it,
+    /// then records and submits a command buffer that transitions the image
+    /// to `TRANSFER_DST_OPTIMAL`, copies the buffer data to the image, and
+    /// transitions the image to `SHADER_READ_ONLY_OPTIMAL`.
+    ///
+    /// The staging buffer is scheduled for deferred deletion.
+    pub fn create_image_with_data(
+        &mut self,
+        info: &ImageCreateInfo,
+        data: &[u8],
+    ) -> Result<ImageHandle, DeviceError> {
+        // Ensure usage includes TRANSFER_DST so we can copy into it
+        let mut patched = ImageCreateInfo {
+            width: info.width,
+            height: info.height,
+            depth: info.depth,
+            format: info.format,
+            usage: info.usage | vk::ImageUsageFlags::TRANSFER_DST,
+            mip_levels: info.mip_levels,
+            array_layers: info.array_layers,
+            samples: info.samples,
+            image_type: info.image_type,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            domain: info.domain,
+        };
+        // Also ensure it can be sampled (common case for uploaded textures)
+        patched.usage |= vk::ImageUsageFlags::SAMPLED;
+
+        let image = self.create_image(&patched)?;
+
+        // Create staging buffer
+        let staging_info = BufferCreateInfo::staging(data.len() as vk::DeviceSize);
+        let mut staging = self.create_buffer(&staging_info)?;
+
+        // Copy pixel data into staging buffer
+        if let Some(slice) = staging.mapped_slice_mut() {
+            slice[..data.len()].copy_from_slice(data);
+        }
+
+        // Record transfer commands
+        self.copy_buffer_to_image_immediate(&staging, &image, info)?;
+
+        // Schedule staging buffer for deferred deletion
+        self.destroy_buffer(staging);
+
+        Ok(image)
+    }
+
+    /// Record and submit a buffer-to-image copy with layout transitions.
+    fn copy_buffer_to_image_immediate(
+        &self,
+        src: &BufferHandle,
+        dst: &ImageHandle,
+        info: &ImageCreateInfo,
+    ) -> Result<(), DeviceError> {
+        let pool = self.current_command_pool();
+
+        let alloc_info = vk::CommandBufferAllocateInfo::default()
+            .command_pool(pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+
+        // SAFETY: device and pool are valid.
+        let cmd = unsafe { self.raw().allocate_command_buffers(&alloc_info)? }[0];
+
+        let begin_info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        let aspect_mask = format_to_aspect_mask(info.format);
+        let subresource_range = vk::ImageSubresourceRange {
+            aspect_mask,
+            base_mip_level: 0,
+            level_count: info.mip_levels,
+            base_array_layer: 0,
+            layer_count: info.array_layers,
+        };
+
+        // SAFETY: cmd is valid and freshly allocated.
+        unsafe {
+            self.raw().begin_command_buffer(cmd, &begin_info)?;
+
+            // Transition UNDEFINED → TRANSFER_DST_OPTIMAL
+            let barrier_to_transfer = vk::ImageMemoryBarrier2::default()
+                .src_stage_mask(vk::PipelineStageFlags2::NONE)
+                .src_access_mask(vk::AccessFlags2::NONE)
+                .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .image(dst.raw)
+                .subresource_range(subresource_range)
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED);
+
+            self.raw().cmd_pipeline_barrier2(
+                cmd,
+                &vk::DependencyInfo::default()
+                    .image_memory_barriers(std::slice::from_ref(&barrier_to_transfer)),
+            );
+
+            // Copy buffer → image
+            let region = vk::BufferImageCopy::default()
+                .buffer_offset(0)
+                .buffer_row_length(0) // tightly packed
+                .buffer_image_height(0)
+                .image_subresource(vk::ImageSubresourceLayers {
+                    aspect_mask,
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: info.array_layers,
+                })
+                .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                .image_extent(vk::Extent3D {
+                    width: info.width,
+                    height: info.height,
+                    depth: info.depth,
+                });
+
+            self.raw().cmd_copy_buffer_to_image(
+                cmd,
+                src.raw,
+                dst.raw,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                std::slice::from_ref(&region),
+            );
+
+            // Transition TRANSFER_DST_OPTIMAL → SHADER_READ_ONLY_OPTIMAL
+            let barrier_to_shader = vk::ImageMemoryBarrier2::default()
+                .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+                .dst_access_mask(vk::AccessFlags2::SHADER_READ)
+                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image(dst.raw)
+                .subresource_range(subresource_range)
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED);
+
+            self.raw().cmd_pipeline_barrier2(
+                cmd,
+                &vk::DependencyInfo::default()
+                    .image_memory_barriers(std::slice::from_ref(&barrier_to_shader)),
+            );
+
+            self.raw().end_command_buffer(cmd)?;
+        }
+
+        let submit_info = vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
+
+        let queue = self.context.queue(crate::context::QueueType::Graphics).queue;
+
+        // SAFETY: queue, cmd are valid.
+        unsafe {
+            self.raw()
+                .queue_submit(queue, &[submit_info], vk::Fence::null())?;
+            self.raw().queue_wait_idle(queue)?;
+        }
+
+        Ok(())
+    }
+
     /// Record and submit a buffer-to-buffer copy on the graphics queue.
     fn copy_buffer_immediate(
         &self,

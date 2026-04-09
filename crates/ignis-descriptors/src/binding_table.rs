@@ -144,6 +144,18 @@ pub struct DescriptorSetBindings {
     pub(crate) active_mask: u32,
 }
 
+impl DescriptorSetBindings {
+    /// Bitmask of which binding slots are active (have a non-None value).
+    pub fn active_mask(&self) -> u32 {
+        self.active_mask
+    }
+
+    /// Whether this set has any active bindings.
+    pub fn is_empty(&self) -> bool {
+        self.active_mask == 0
+    }
+}
+
 impl Default for DescriptorSetBindings {
     fn default() -> Self {
         Self {
@@ -324,6 +336,16 @@ impl BindingTable {
     /// Clear all dirty flags.
     pub fn clear_all_dirty(&mut self) {
         self.dirty_sets = 0;
+    }
+
+    /// Mark a specific set as dirty (forces re-allocation on next flush).
+    pub fn mark_dirty(&mut self, set: u32) {
+        self.dirty_sets |= 1 << set;
+    }
+
+    /// Mark all sets as dirty.
+    pub fn mark_all_dirty(&mut self) {
+        self.dirty_sets = (1 << MAX_DESCRIPTOR_SETS) - 1;
     }
 
     fn set_binding(&mut self, set: u32, binding: u32, slot: BindingSlot) {
