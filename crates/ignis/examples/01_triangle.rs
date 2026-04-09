@@ -1,11 +1,16 @@
-//! Phase 1+2 validation: clear-screen window.
+//! Full pipeline triangle using DrawContext.
 //!
-//! Creates a window, initializes WSI with Vulkan, and runs a main loop that
-//! clears the swapchain image to a cycling color. Demonstrates:
-//! - Winit window creation
-//! - WSI initialization (device + swapchain)
-//! - Frame lifecycle (begin_frame / end_frame)
-//! - Command buffer allocation and barrier transitions
+//! Demonstrates the complete integration: shader loading, program creation,
+//! render pass auto-creation, lazy pipeline compilation, and automatic
+//! descriptor set management via DrawContext.
+//!
+//! The triangle uses hardcoded vertex positions and colors in the vertex shader
+//! (no vertex buffer needed), so this exercises the pipeline compilation and
+//! render pass flow without the complexity of vertex buffer management.
+//!
+//! Requires: compiled SPIR-V shaders in `shaders/triangle.{vert,frag}.spv`.
+//! Compile with: `glslc shaders/triangle.vert -o shaders/triangle.vert.spv`
+//!               `glslc shaders/triangle.frag -o shaders/triangle.frag.spv`
 
 use ash::vk;
 use winit::application::ApplicationHandler;
@@ -16,13 +21,35 @@ use winit::window::{Window, WindowId};
 use ignis::command::barriers::ImageBarrierInfo;
 use ignis::command::command_buffer::{CommandBuffer, CommandBufferType};
 use ignis::core::context::QueueType;
+use ignis::pipeline::draw_context::{DrawContext, FrameResources};
+use ignis::pipeline::pipeline::VertexInputLayout;
+use ignis::pipeline::program::Program;
+use ignis::pipeline::render_pass::{
+    AttachmentLoadOp, AttachmentStoreOp, ColorAttachmentInfo, RenderPassInfo,
+};
+use ignis::pipeline::shader::Shader;
 use ignis::wsi::platform::WinitPlatform;
 use ignis::wsi::wsi::{WSI, WSIConfig};
+
+/// Helper to load SPIR-V bytes as &[u32], handling alignment.
+fn spirv_from_bytes(bytes: &[u8]) -> Vec<u32> {
+    assert!(
+        bytes.len() % 4 == 0,
+        "SPIR-V size must be a multiple of 4 bytes"
+    );
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
+}
 
 struct App {
     wsi: Option<WSI>,
     window: Option<Window>,
     frame: u64,
+    // Pipeline resources
+    program: Option<Program>,
+    frame_resources: Option<FrameResources>,
 }
 
 impl App {
@@ -31,7 +58,36 @@ impl App {
             wsi: None,
             window: None,
             frame: 0,
+            program: None,
+            frame_resources: None,
         }
+    }
+
+    fn init_pipeline(&mut self) {
+        let wsi = self.wsi.as_ref().unwrap();
+        let device = wsi.device().raw();
+
+        // Load shaders from embedded SPIR-V
+        let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.vert.spv"));
+        let frag_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.frag.spv"));
+
+        let vert_shader = Shader::create(device, vk::ShaderStageFlags::VERTEX, &vert_spirv)
+            .expect("failed to create vertex shader");
+        let frag_shader = Shader::create(device, vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
+            .expect("failed to create fragment shader");
+
+        let program = Program::create(device, &[&vert_shader, &frag_shader])
+            .expect("failed to create program");
+
+        // We don't destroy shaders here — Program retains the module handles.
+        // In a real app you'd manage shader lifetimes more carefully.
+
+        self.program = Some(program);
+
+        // Create frame resources with a null pipeline cache (no disk persistence for this example)
+        self.frame_resources = Some(FrameResources::new(vk::PipelineCache::null()));
+
+        log::info!("Pipeline initialized: vertex + fragment shaders loaded, program created");
     }
 
     fn render(&mut self) {
@@ -45,62 +101,102 @@ impl App {
             }
         };
 
-        // Allocate and begin a command buffer
+        let extent = wsi.swapchain_extent();
+        let format = wsi.swapchain_format();
+
+        // Reset per-frame caches
+        self.frame_resources
+            .as_mut()
+            .unwrap()
+            .reset_frame(wsi.device().raw());
+
+        // Allocate command buffer
         let raw_cmd = wsi
             .device()
             .request_command_buffer_raw(QueueType::Graphics)
             .expect("failed to allocate command buffer");
-        let mut cmd =
-            CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, wsi.device().raw().clone());
+        let mut cmd = CommandBuffer::from_raw(
+            raw_cmd,
+            CommandBufferType::Graphics,
+            wsi.device().raw().clone(),
+        );
 
-        // Transition swapchain image: UNDEFINED → TRANSFER_DST for clear
+        // Transition swapchain image: UNDEFINED → COLOR_ATTACHMENT_OPTIMAL
         cmd.image_barrier(&ImageBarrierInfo::undefined_to(
             swapchain_image.image,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::PipelineStageFlags2::TRANSFER,
-            vk::AccessFlags2::TRANSFER_WRITE,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
             vk::ImageAspectFlags::COLOR,
         ));
 
-        // Cycle clear color over time
-        let t = self.frame as f32 * 0.01;
-        let r = (t.sin() * 0.5 + 0.5).clamp(0.0, 1.0);
-        let g = ((t + 2.0).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
-        let b = ((t + 4.0).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
-
-        let clear_color = vk::ClearColorValue {
-            float32: [r, g, b, 1.0],
+        // Set up render pass info for the swapchain
+        let rp_info = RenderPassInfo {
+            color_attachments: vec![ColorAttachmentInfo {
+                format,
+                load_op: AttachmentLoadOp::Clear,
+                store_op: AttachmentStoreOp::Store,
+            }],
+            depth_stencil: None,
+            samples: vk::SampleCountFlags::TYPE_1,
         };
 
-        let range = vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        };
+        // Cycle clear color
+        let t = self.frame as f32 * 0.005;
+        let clear_values = [vk::ClearValue {
+            color: vk::ClearColorValue {
+                float32: [
+                    (t.sin() * 0.15 + 0.1).clamp(0.0, 1.0),
+                    (t.cos() * 0.15 + 0.1).clamp(0.0, 1.0),
+                    0.15,
+                    1.0,
+                ],
+            },
+        }];
 
-        // SAFETY: command buffer and image are valid, layout is TRANSFER_DST.
-        unsafe {
-            wsi.device().raw().cmd_clear_color_image(
-                cmd.raw(),
-                swapchain_image.image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &clear_color,
-                &[range],
-            );
+        // Use DrawContext for the draw call
+        {
+            let device = wsi.device().raw();
+            let resources = self.frame_resources.as_mut().unwrap();
+            let mut ctx = DrawContext::new(&mut cmd, device, resources);
+
+            ctx.begin_render_pass(
+                &rp_info,
+                extent,
+                &clear_values,
+                &[swapchain_image.view],
+            )
+            .expect("failed to begin render pass");
+
+            // Disable backface culling (our hardcoded triangle might face either way)
+            ctx.set_cull_mode(vk::CullModeFlags::NONE);
+
+            // Draw the triangle — pipeline is compiled lazily on first call
+            let program = self.program.as_mut().unwrap();
+            let vertex_layout = VertexInputLayout::default(); // no vertex inputs (hardcoded in shader)
+
+            ctx.draw(program, &vertex_layout, 3, 1, 0, 0)
+                .expect("draw failed");
+
+            ctx.end_render_pass();
         }
 
-        // Transition: TRANSFER_DST → PRESENT_SRC
+        // Transition: COLOR_ATTACHMENT_OPTIMAL → PRESENT_SRC_KHR
         cmd.image_barrier(&ImageBarrierInfo {
             image: swapchain_image.image,
-            old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            old_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             new_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-            src_stage: vk::PipelineStageFlags2::TRANSFER,
-            src_access: vk::AccessFlags2::TRANSFER_WRITE,
+            src_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            src_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
             dst_stage: vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
             dst_access: vk::AccessFlags2::NONE,
-            subresource_range: range,
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
         });
 
         // Submit and present
@@ -116,35 +212,69 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attrs = Window::default_attributes()
-            .with_title("ignis — 01_triangle")
+            .with_title("ignis — 01 triangle (DrawContext)")
             .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
 
         let window = event_loop
             .create_window(window_attrs)
             .expect("failed to create window");
 
-        let platform =
-            WinitPlatform::new(&window).expect("failed to create winit platform");
+        let platform = WinitPlatform::new(&window).expect("failed to create winit platform");
 
-        let wsi = WSI::new(&platform, &WSIConfig::default())
-            .expect("failed to initialize WSI");
+        let wsi = WSI::new(&platform, &WSIConfig::default()).expect("failed to initialize WSI");
 
         self.window = Some(window);
         self.wsi = Some(wsi);
+
+        self.init_pipeline();
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _id: WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
                 if let Some(wsi) = &mut self.wsi {
                     wsi.resize(size.width, size.height);
                 }
+                // Invalidate framebuffer cache on resize
+                if let Some(resources) = &mut self.frame_resources {
+                    if let Some(wsi) = &self.wsi {
+                        resources.framebuffer_cache.reset(wsi.device().raw());
+                    }
+                }
             }
             WindowEvent::RedrawRequested => {
                 self.render();
             }
             _ => {}
+        }
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Some(wsi) = &self.wsi {
+            // SAFETY: wait for GPU to be idle before destroying resources
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
+        }
+
+        if let Some(mut program) = self.program.take() {
+            if let Some(wsi) = &self.wsi {
+                program.destroy(wsi.device().raw());
+            }
+        }
+
+        if let Some(mut resources) = self.frame_resources.take() {
+            if let Some(wsi) = &self.wsi {
+                resources.destroy(wsi.device().raw());
+            }
         }
     }
 }
