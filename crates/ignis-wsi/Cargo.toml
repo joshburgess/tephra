@@ -8,6 +8,7 @@ description = "Windowing system integration: swapchain management, platform abst
 
 [dependencies]
 ash = { workspace = true }
+ash-window = { workspace = true }
 ignis-core = { workspace = true }
 winit = { workspace = true }
 raw-window-handle = { workspace = true }

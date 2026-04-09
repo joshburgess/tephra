@@ -17,6 +17,7 @@ spirv-reflect = "0.2"
 # Windowing
 winit = "0.30"
 raw-window-handle = "0.6"
+ash-window = "0.13"
 
 # Logging
 log = "0.4"
