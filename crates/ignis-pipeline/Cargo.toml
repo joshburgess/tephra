@@ -9,6 +9,7 @@ description = "Shader reflection, program linking, lazy pipeline compilation, re
 [dependencies]
 ash = { workspace = true }
 ignis-core = { workspace = true }
+ignis-command = { workspace = true }
 ignis-descriptors = { workspace = true }
 spirv-reflect = { workspace = true }
 log = { workspace = true }

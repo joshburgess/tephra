@@ -6,4 +6,3 @@
 pub mod binding_table;
 pub mod cache;
 pub mod set_allocator;
-pub mod update;
