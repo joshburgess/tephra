@@ -829,3 +829,159 @@ pub(crate) fn build_compute_pipeline_with_state(
 
     Ok(pipelines[0])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- VertexInputLayout hashing ---
+
+    #[test]
+    fn empty_layout_hash_stable() {
+        let layout = VertexInputLayout::default();
+        let h1 = layout.compute_hash();
+        let h2 = layout.compute_hash();
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn identical_layouts_same_hash() {
+        let make = || VertexInputLayout {
+            bindings: vec![VertexBinding {
+                binding: 0,
+                stride: 32,
+                input_rate: vk::VertexInputRate::VERTEX,
+            }],
+            attributes: vec![VertexAttribute {
+                location: 0,
+                binding: 0,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: 0,
+            }],
+        };
+        assert_eq!(make().compute_hash(), make().compute_hash());
+    }
+
+    #[test]
+    fn different_stride_different_hash() {
+        let a = VertexInputLayout {
+            bindings: vec![VertexBinding {
+                binding: 0,
+                stride: 32,
+                input_rate: vk::VertexInputRate::VERTEX,
+            }],
+            attributes: vec![],
+        };
+        let b = VertexInputLayout {
+            bindings: vec![VertexBinding {
+                binding: 0,
+                stride: 48,
+                input_rate: vk::VertexInputRate::VERTEX,
+            }],
+            attributes: vec![],
+        };
+        assert_ne!(a.compute_hash(), b.compute_hash());
+    }
+
+    #[test]
+    fn different_format_different_hash() {
+        let make = |fmt| VertexInputLayout {
+            bindings: vec![],
+            attributes: vec![VertexAttribute {
+                location: 0,
+                binding: 0,
+                format: fmt,
+                offset: 0,
+            }],
+        };
+        assert_ne!(
+            make(vk::Format::R32G32B32_SFLOAT).compute_hash(),
+            make(vk::Format::R32G32_SFLOAT).compute_hash()
+        );
+    }
+
+    #[test]
+    fn different_input_rate_different_hash() {
+        let make = |rate| VertexInputLayout {
+            bindings: vec![VertexBinding {
+                binding: 0,
+                stride: 16,
+                input_rate: rate,
+            }],
+            attributes: vec![],
+        };
+        assert_ne!(
+            make(vk::VertexInputRate::VERTEX).compute_hash(),
+            make(vk::VertexInputRate::INSTANCE).compute_hash()
+        );
+    }
+
+    #[test]
+    fn different_attribute_offset_different_hash() {
+        let make = |off| VertexInputLayout {
+            bindings: vec![],
+            attributes: vec![VertexAttribute {
+                location: 0,
+                binding: 0,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: off,
+            }],
+        };
+        assert_ne!(make(0).compute_hash(), make(12).compute_hash());
+    }
+
+    #[test]
+    fn multi_binding_layout_hash_stable() {
+        let layout = VertexInputLayout {
+            bindings: vec![
+                VertexBinding {
+                    binding: 0,
+                    stride: 32,
+                    input_rate: vk::VertexInputRate::VERTEX,
+                },
+                VertexBinding {
+                    binding: 1,
+                    stride: 16,
+                    input_rate: vk::VertexInputRate::INSTANCE,
+                },
+            ],
+            attributes: vec![
+                VertexAttribute {
+                    location: 0,
+                    binding: 0,
+                    format: vk::Format::R32G32B32_SFLOAT,
+                    offset: 0,
+                },
+                VertexAttribute {
+                    location: 1,
+                    binding: 0,
+                    format: vk::Format::R32G32_SFLOAT,
+                    offset: 12,
+                },
+                VertexAttribute {
+                    location: 2,
+                    binding: 1,
+                    format: vk::Format::R32G32B32A32_SFLOAT,
+                    offset: 0,
+                },
+            ],
+        };
+        assert_eq!(layout.compute_hash(), layout.compute_hash());
+    }
+
+    // --- PipelineCompiler ---
+
+    #[test]
+    fn compiler_new_has_empty_caches() {
+        let compiler = PipelineCompiler::new(vk::PipelineCache::null());
+        assert_eq!(compiler.graphics_cache.len(), 0);
+        assert_eq!(compiler.dynamic_graphics_cache.len(), 0);
+        assert_eq!(compiler.compute_cache.len(), 0);
+    }
+
+    #[test]
+    fn compiler_no_fossilize_by_default() {
+        let compiler = PipelineCompiler::new(vk::PipelineCache::null());
+        assert!(compiler.fossilize_recorder().is_none());
+    }
+}

@@ -264,3 +264,176 @@ impl Default for RenderPassCache {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- AttachmentLoadOp / StoreOp conversions ---
+
+    #[test]
+    fn load_op_conversion() {
+        assert_eq!(vk::AttachmentLoadOp::from(AttachmentLoadOp::Clear), vk::AttachmentLoadOp::CLEAR);
+        assert_eq!(vk::AttachmentLoadOp::from(AttachmentLoadOp::Load), vk::AttachmentLoadOp::LOAD);
+        assert_eq!(
+            vk::AttachmentLoadOp::from(AttachmentLoadOp::DontCare),
+            vk::AttachmentLoadOp::DONT_CARE
+        );
+    }
+
+    #[test]
+    fn store_op_conversion() {
+        assert_eq!(
+            vk::AttachmentStoreOp::from(AttachmentStoreOp::Store),
+            vk::AttachmentStoreOp::STORE
+        );
+        assert_eq!(
+            vk::AttachmentStoreOp::from(AttachmentStoreOp::DontCare),
+            vk::AttachmentStoreOp::DONT_CARE
+        );
+    }
+
+    // --- RenderPassInfo hashing ---
+
+    fn make_single_color_pass(format: vk::Format, load: AttachmentLoadOp) -> RenderPassInfo {
+        RenderPassInfo {
+            color_attachments: vec![ColorAttachmentInfo {
+                format,
+                load_op: load,
+                store_op: AttachmentStoreOp::Store,
+            }],
+            depth_stencil: None,
+            samples: vk::SampleCountFlags::TYPE_1,
+        }
+    }
+
+    #[test]
+    fn identical_pass_info_same_hash() {
+        let a = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Clear);
+        let b = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Clear);
+        assert_eq!(
+            RenderPassCache::compatible_hash(&a),
+            RenderPassCache::compatible_hash(&b)
+        );
+    }
+
+    #[test]
+    fn different_format_different_hash() {
+        let a = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Clear);
+        let b = make_single_color_pass(vk::Format::R8G8B8A8_UNORM, AttachmentLoadOp::Clear);
+        assert_ne!(
+            RenderPassCache::compatible_hash(&a),
+            RenderPassCache::compatible_hash(&b)
+        );
+    }
+
+    #[test]
+    fn different_load_op_different_hash() {
+        let a = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Clear);
+        let b = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Load);
+        assert_ne!(
+            RenderPassCache::compatible_hash(&a),
+            RenderPassCache::compatible_hash(&b)
+        );
+    }
+
+    #[test]
+    fn different_sample_count_different_hash() {
+        let a = RenderPassInfo {
+            color_attachments: vec![ColorAttachmentInfo {
+                format: vk::Format::B8G8R8A8_SRGB,
+                load_op: AttachmentLoadOp::Clear,
+                store_op: AttachmentStoreOp::Store,
+            }],
+            depth_stencil: None,
+            samples: vk::SampleCountFlags::TYPE_1,
+        };
+        let b = RenderPassInfo {
+            samples: vk::SampleCountFlags::TYPE_4,
+            ..a.clone()
+        };
+        assert_ne!(
+            RenderPassCache::compatible_hash(&a),
+            RenderPassCache::compatible_hash(&b)
+        );
+    }
+
+    #[test]
+    fn with_depth_different_from_without() {
+        let without = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Clear);
+        let with = RenderPassInfo {
+            depth_stencil: Some(DepthStencilAttachmentInfo {
+                format: vk::Format::D32_SFLOAT,
+                depth_load_op: AttachmentLoadOp::Clear,
+                depth_store_op: AttachmentStoreOp::DontCare,
+                stencil_load_op: AttachmentLoadOp::DontCare,
+                stencil_store_op: AttachmentStoreOp::DontCare,
+            }),
+            ..without.clone()
+        };
+        assert_ne!(
+            RenderPassCache::compatible_hash(&without),
+            RenderPassCache::compatible_hash(&with)
+        );
+    }
+
+    #[test]
+    fn two_color_attachments_different_from_one() {
+        let one = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Clear);
+        let two = RenderPassInfo {
+            color_attachments: vec![
+                ColorAttachmentInfo {
+                    format: vk::Format::B8G8R8A8_SRGB,
+                    load_op: AttachmentLoadOp::Clear,
+                    store_op: AttachmentStoreOp::Store,
+                },
+                ColorAttachmentInfo {
+                    format: vk::Format::R16G16B16A16_SFLOAT,
+                    load_op: AttachmentLoadOp::Clear,
+                    store_op: AttachmentStoreOp::Store,
+                },
+            ],
+            depth_stencil: None,
+            samples: vk::SampleCountFlags::TYPE_1,
+        };
+        assert_ne!(
+            RenderPassCache::compatible_hash(&one),
+            RenderPassCache::compatible_hash(&two)
+        );
+    }
+
+    #[test]
+    fn hash_stability() {
+        let info = make_single_color_pass(vk::Format::B8G8R8A8_SRGB, AttachmentLoadOp::Clear);
+        let h1 = RenderPassCache::compatible_hash(&info);
+        let h2 = RenderPassCache::compatible_hash(&info);
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn cache_starts_empty() {
+        let cache = RenderPassCache::new();
+        assert_eq!(cache.cache.len(), 0);
+    }
+
+    // --- DepthStencilAttachmentInfo ---
+
+    #[test]
+    fn depth_stencil_different_formats_different_hash() {
+        let make = |fmt| RenderPassInfo {
+            color_attachments: vec![],
+            depth_stencil: Some(DepthStencilAttachmentInfo {
+                format: fmt,
+                depth_load_op: AttachmentLoadOp::Clear,
+                depth_store_op: AttachmentStoreOp::DontCare,
+                stencil_load_op: AttachmentLoadOp::DontCare,
+                stencil_store_op: AttachmentStoreOp::DontCare,
+            }),
+            samples: vk::SampleCountFlags::TYPE_1,
+        };
+        assert_ne!(
+            RenderPassCache::compatible_hash(&make(vk::Format::D32_SFLOAT)),
+            RenderPassCache::compatible_hash(&make(vk::Format::D24_UNORM_S8_UINT))
+        );
+    }
+}

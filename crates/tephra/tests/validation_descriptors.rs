@@ -207,3 +207,147 @@ fn multiple_dispatches_reuse_descriptors() {
 
     assert_no_validation_errors();
 }
+
+#[test]
+fn compute_dispatch_same_bindings_cached() {
+    init_capture_logger();
+    clear_errors();
+
+    let mut device = create_headless_device("validation_descriptor_cached");
+
+    let size = 256u64;
+    let buf_info = BufferCreateInfo {
+        size,
+        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+        domain: MemoryDomain::Host,
+    };
+    let mut buf_a = device.create_buffer(&buf_info).expect("buf_a");
+    let buf_b = device.create_buffer(&buf_info).expect("buf_b");
+
+    if let Some(slice) = buf_a.mapped_slice_mut() {
+        let data: Vec<f32> = (0..64).map(|i| i as f32).collect();
+        let bytes: &[u8] = bytemuck::cast_slice(&data);
+        slice[..bytes.len()].copy_from_slice(bytes);
+    }
+
+    let spirv = spirv_from_bytes(include_bytes!("../shaders/double.comp.spv"));
+    let shader =
+        Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &spirv).expect("shader");
+    let mut program = Program::create(device.raw(), &[&shader]).expect("program");
+
+    device.begin_frame().expect("begin_frame");
+    let raw_cmd = device
+        .request_command_buffer_raw(QueueType::Graphics)
+        .expect("cmd alloc");
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
+
+    let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
+
+    {
+        let mut ctx = DrawContext::new(&mut cmd, device.raw(), &mut frame_resources);
+
+        // Dispatch twice with same bindings — should hit descriptor cache
+        ctx.set_storage_buffer(0, 0, buf_a.raw(), 0, size);
+        ctx.set_storage_buffer(0, 1, buf_b.raw(), 0, size);
+        ctx.dispatch(&mut program, 1, 1, 1).expect("dispatch 1");
+
+        // Same bindings again — cached path
+        ctx.dispatch(&mut program, 1, 1, 1)
+            .expect("dispatch 2 (cached)");
+    }
+
+    let fence = device.current_fence();
+    device
+        .submit_command_buffer(cmd.raw(), QueueType::Graphics, &[], &[], &[], fence)
+        .expect("submit");
+    // SAFETY: fence is valid.
+    unsafe {
+        device
+            .raw()
+            .wait_for_fences(&[fence], true, u64::MAX)
+            .expect("wait");
+        device.raw().device_wait_idle().ok();
+    }
+
+    program.destroy(device.raw());
+    let mut shader = shader;
+    shader.destroy(device.raw());
+    frame_resources.destroy(device.raw());
+    device.destroy_buffer(buf_a);
+    device.destroy_buffer(buf_b);
+
+    assert_no_validation_errors();
+}
+
+#[test]
+fn multi_frame_descriptor_reuse() {
+    init_capture_logger();
+    clear_errors();
+
+    let mut device = create_headless_device("validation_descriptor_multiframe");
+
+    let size = 256u64;
+    let buf_info = BufferCreateInfo {
+        size,
+        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+        domain: MemoryDomain::Host,
+    };
+    let mut input = device.create_buffer(&buf_info).expect("input");
+    let output = device.create_buffer(&buf_info).expect("output");
+
+    if let Some(slice) = input.mapped_slice_mut() {
+        let data: Vec<f32> = (0..64).map(|i| i as f32).collect();
+        let bytes: &[u8] = bytemuck::cast_slice(&data);
+        slice[..bytes.len()].copy_from_slice(bytes);
+    }
+
+    let spirv = spirv_from_bytes(include_bytes!("../shaders/double.comp.spv"));
+    let shader =
+        Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &spirv).expect("shader");
+    let mut program = Program::create(device.raw(), &[&shader]).expect("program");
+
+    // Use a single FrameResources across all frames (owns the pipelines that
+    // get cached on the first dispatch and reused on subsequent dispatches).
+    let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
+
+    // Run the same dispatch across 5 frames to exercise per-frame descriptor
+    // set pool recycling.
+    for _ in 0..5 {
+        device.begin_frame().expect("begin_frame");
+        let raw_cmd = device
+            .request_command_buffer_raw(QueueType::Graphics)
+            .expect("cmd alloc");
+        let mut cmd = CommandBuffer::from_raw(
+            raw_cmd,
+            CommandBufferType::Graphics,
+            device.raw().clone(),
+        );
+
+        {
+            let mut ctx = DrawContext::new(&mut cmd, device.raw(), &mut frame_resources);
+            ctx.set_storage_buffer(0, 0, input.raw(), 0, size);
+            ctx.set_storage_buffer(0, 1, output.raw(), 0, size);
+            ctx.dispatch(&mut program, 1, 1, 1).expect("dispatch");
+        }
+
+        let fence = device.current_fence();
+        device
+            .submit_command_buffer(cmd.raw(), QueueType::Graphics, &[], &[], &[], fence)
+            .expect("submit");
+    }
+
+    // SAFETY: wait for all frames.
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
+
+    program.destroy(device.raw());
+    let mut shader = shader;
+    shader.destroy(device.raw());
+    frame_resources.destroy(device.raw());
+    device.destroy_buffer(input);
+    device.destroy_buffer(output);
+
+    assert_no_validation_errors();
+}

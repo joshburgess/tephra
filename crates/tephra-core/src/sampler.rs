@@ -348,3 +348,220 @@ impl SamplerCache {
         unsafe { device.create_sampler(&sampler_ci, None) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn hash_key(key: &SamplerKey) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    // --- SamplerCreateInfo defaults and builders ---
+
+    #[test]
+    fn default_sampler_info() {
+        let info = SamplerCreateInfo::default();
+        assert_eq!(info.mag_filter, vk::Filter::LINEAR);
+        assert_eq!(info.min_filter, vk::Filter::LINEAR);
+        assert_eq!(info.mipmap_mode, vk::SamplerMipmapMode::LINEAR);
+        assert_eq!(info.address_mode_u, vk::SamplerAddressMode::CLAMP_TO_EDGE);
+        assert_eq!(info.address_mode_v, vk::SamplerAddressMode::CLAMP_TO_EDGE);
+        assert_eq!(info.address_mode_w, vk::SamplerAddressMode::CLAMP_TO_EDGE);
+        assert!(!info.anisotropy_enable);
+        assert_eq!(info.max_anisotropy, 1.0);
+        assert!(!info.compare_enable);
+        assert_eq!(info.compare_op, vk::CompareOp::NEVER);
+        assert_eq!(info.min_lod, 0.0);
+        assert_eq!(info.max_lod, vk::LOD_CLAMP_NONE);
+    }
+
+    #[test]
+    fn builder_filter() {
+        let info =
+            SamplerCreateInfo::default().filter(vk::Filter::NEAREST, vk::Filter::NEAREST);
+        assert_eq!(info.mag_filter, vk::Filter::NEAREST);
+        assert_eq!(info.min_filter, vk::Filter::NEAREST);
+    }
+
+    #[test]
+    fn builder_mipmap_mode() {
+        let info = SamplerCreateInfo::default().mipmap_mode(vk::SamplerMipmapMode::NEAREST);
+        assert_eq!(info.mipmap_mode, vk::SamplerMipmapMode::NEAREST);
+    }
+
+    #[test]
+    fn builder_address_mode_sets_all() {
+        let info = SamplerCreateInfo::default().address_mode(vk::SamplerAddressMode::REPEAT);
+        assert_eq!(info.address_mode_u, vk::SamplerAddressMode::REPEAT);
+        assert_eq!(info.address_mode_v, vk::SamplerAddressMode::REPEAT);
+        assert_eq!(info.address_mode_w, vk::SamplerAddressMode::REPEAT);
+    }
+
+    #[test]
+    fn builder_anisotropy() {
+        let info = SamplerCreateInfo::default().anisotropy(16.0);
+        assert!(info.anisotropy_enable);
+        assert_eq!(info.max_anisotropy, 16.0);
+    }
+
+    #[test]
+    fn builder_compare() {
+        let info = SamplerCreateInfo::default().compare(vk::CompareOp::LESS_OR_EQUAL);
+        assert!(info.compare_enable);
+        assert_eq!(info.compare_op, vk::CompareOp::LESS_OR_EQUAL);
+    }
+
+    #[test]
+    fn builder_lod_range() {
+        let info = SamplerCreateInfo::default().lod_range(1.0, 8.0);
+        assert_eq!(info.min_lod, 1.0);
+        assert_eq!(info.max_lod, 8.0);
+    }
+
+    #[test]
+    fn builder_border_color() {
+        let info =
+            SamplerCreateInfo::default().border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE);
+        assert_eq!(info.border_color, vk::BorderColor::FLOAT_OPAQUE_WHITE);
+    }
+
+    #[test]
+    fn builder_chaining() {
+        let info = SamplerCreateInfo::default()
+            .filter(vk::Filter::NEAREST, vk::Filter::NEAREST)
+            .address_mode(vk::SamplerAddressMode::REPEAT)
+            .anisotropy(8.0)
+            .lod_range(0.0, 12.0);
+        assert_eq!(info.mag_filter, vk::Filter::NEAREST);
+        assert_eq!(info.address_mode_u, vk::SamplerAddressMode::REPEAT);
+        assert!(info.anisotropy_enable);
+        assert_eq!(info.max_anisotropy, 8.0);
+        assert_eq!(info.max_lod, 12.0);
+    }
+
+    // --- SamplerKey hashing ---
+
+    #[test]
+    fn identical_keys_same_hash() {
+        let info = SamplerCreateInfo::default();
+        let k1 = SamplerKey::from_create_info(&info);
+        let k2 = SamplerKey::from_create_info(&info);
+        assert_eq!(k1, k2);
+        assert_eq!(hash_key(&k1), hash_key(&k2));
+    }
+
+    #[test]
+    fn different_filter_different_hash() {
+        let a = SamplerCreateInfo::default();
+        let b = SamplerCreateInfo::default().filter(vk::Filter::NEAREST, vk::Filter::NEAREST);
+        let ka = SamplerKey::from_create_info(&a);
+        let kb = SamplerKey::from_create_info(&b);
+        assert_ne!(ka, kb);
+        assert_ne!(hash_key(&ka), hash_key(&kb));
+    }
+
+    #[test]
+    fn different_address_mode_different_hash() {
+        let a = SamplerCreateInfo::default();
+        let b = SamplerCreateInfo::default().address_mode(vk::SamplerAddressMode::REPEAT);
+        assert_ne!(
+            SamplerKey::from_create_info(&a),
+            SamplerKey::from_create_info(&b)
+        );
+    }
+
+    #[test]
+    fn different_lod_different_key() {
+        let a = SamplerCreateInfo::default().lod_range(0.0, 10.0);
+        let b = SamplerCreateInfo::default().lod_range(0.0, 12.0);
+        assert_ne!(
+            SamplerKey::from_create_info(&a),
+            SamplerKey::from_create_info(&b)
+        );
+    }
+
+    // --- StockSampler ---
+
+    #[test]
+    fn stock_sampler_nearest_clamp() {
+        let info = StockSampler::NearestClamp.to_create_info();
+        assert_eq!(info.mag_filter, vk::Filter::NEAREST);
+        assert_eq!(info.min_filter, vk::Filter::NEAREST);
+        assert_eq!(info.mipmap_mode, vk::SamplerMipmapMode::NEAREST);
+        assert_eq!(info.address_mode_u, vk::SamplerAddressMode::CLAMP_TO_EDGE);
+        assert!(!info.compare_enable);
+    }
+
+    #[test]
+    fn stock_sampler_linear_wrap() {
+        let info = StockSampler::LinearWrap.to_create_info();
+        assert_eq!(info.mag_filter, vk::Filter::LINEAR);
+        assert_eq!(info.min_filter, vk::Filter::LINEAR);
+        assert_eq!(info.address_mode_u, vk::SamplerAddressMode::REPEAT);
+    }
+
+    #[test]
+    fn stock_sampler_trilinear_clamp() {
+        let info = StockSampler::TrilinearClamp.to_create_info();
+        assert_eq!(info.mag_filter, vk::Filter::LINEAR);
+        assert_eq!(info.mipmap_mode, vk::SamplerMipmapMode::LINEAR);
+        assert_eq!(info.address_mode_u, vk::SamplerAddressMode::CLAMP_TO_EDGE);
+    }
+
+    #[test]
+    fn stock_sampler_shadow_has_compare() {
+        let nearest = StockSampler::NearestShadow.to_create_info();
+        assert!(nearest.compare_enable);
+        assert_eq!(nearest.compare_op, vk::CompareOp::LESS_OR_EQUAL);
+
+        let linear = StockSampler::LinearShadow.to_create_info();
+        assert!(linear.compare_enable);
+        assert_eq!(linear.compare_op, vk::CompareOp::LESS_OR_EQUAL);
+    }
+
+    #[test]
+    fn stock_samplers_all_unique_keys() {
+        let variants = [
+            StockSampler::NearestClamp,
+            StockSampler::NearestWrap,
+            StockSampler::LinearClamp,
+            StockSampler::LinearWrap,
+            StockSampler::TrilinearClamp,
+            StockSampler::TrilinearWrap,
+            StockSampler::NearestShadow,
+            StockSampler::LinearShadow,
+        ];
+        let keys: Vec<SamplerKey> = variants
+            .iter()
+            .map(|v| SamplerKey::from_create_info(&v.to_create_info()))
+            .collect();
+        for (i, ka) in keys.iter().enumerate() {
+            for (j, kb) in keys.iter().enumerate() {
+                if i != j {
+                    assert_ne!(ka, kb, "stock samplers {i} and {j} have same key");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stock_sampler_non_shadow_no_compare() {
+        let non_shadow = [
+            StockSampler::NearestClamp,
+            StockSampler::NearestWrap,
+            StockSampler::LinearClamp,
+            StockSampler::LinearWrap,
+            StockSampler::TrilinearClamp,
+            StockSampler::TrilinearWrap,
+        ];
+        for variant in &non_shadow {
+            let info = variant.to_create_info();
+            assert!(!info.compare_enable, "{variant:?} should not have compare");
+        }
+    }
+}

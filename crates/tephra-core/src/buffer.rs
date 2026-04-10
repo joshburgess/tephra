@@ -70,3 +70,63 @@ impl BufferCreateInfo {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vertex_buffer_info() {
+        let info = BufferCreateInfo::vertex(1024);
+        assert_eq!(info.size, 1024);
+        assert!(info.usage.contains(vk::BufferUsageFlags::VERTEX_BUFFER));
+        assert!(info.usage.contains(vk::BufferUsageFlags::TRANSFER_DST));
+        assert_eq!(info.domain, MemoryDomain::Device);
+    }
+
+    #[test]
+    fn index_buffer_info() {
+        let info = BufferCreateInfo::index(512);
+        assert_eq!(info.size, 512);
+        assert!(info.usage.contains(vk::BufferUsageFlags::INDEX_BUFFER));
+        assert!(info.usage.contains(vk::BufferUsageFlags::TRANSFER_DST));
+        assert_eq!(info.domain, MemoryDomain::Device);
+    }
+
+    #[test]
+    fn uniform_buffer_info() {
+        let info = BufferCreateInfo::uniform(256);
+        assert_eq!(info.size, 256);
+        assert!(info.usage.contains(vk::BufferUsageFlags::UNIFORM_BUFFER));
+        assert_eq!(info.domain, MemoryDomain::Host);
+    }
+
+    #[test]
+    fn staging_buffer_info() {
+        let info = BufferCreateInfo::staging(4096);
+        assert_eq!(info.size, 4096);
+        assert!(info.usage.contains(vk::BufferUsageFlags::TRANSFER_SRC));
+        assert_eq!(info.domain, MemoryDomain::Host);
+    }
+
+    #[test]
+    fn storage_buffer_info() {
+        let info = BufferCreateInfo::storage(2048);
+        assert_eq!(info.size, 2048);
+        assert!(info.usage.contains(vk::BufferUsageFlags::STORAGE_BUFFER));
+        assert!(info.usage.contains(vk::BufferUsageFlags::TRANSFER_DST));
+        assert_eq!(info.domain, MemoryDomain::Device);
+    }
+
+    #[test]
+    fn vertex_not_transfer_src() {
+        let info = BufferCreateInfo::vertex(64);
+        assert!(!info.usage.contains(vk::BufferUsageFlags::TRANSFER_SRC));
+    }
+
+    #[test]
+    fn staging_not_transfer_dst() {
+        let info = BufferCreateInfo::staging(64);
+        assert!(!info.usage.contains(vk::BufferUsageFlags::TRANSFER_DST));
+    }
+}

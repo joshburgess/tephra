@@ -246,4 +246,145 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(hash_state(&a), hash_state(&b));
     }
+
+    // --- StencilFaceState ---
+
+    #[test]
+    fn stencil_face_default() {
+        let s = StencilFaceState::default();
+        assert_eq!(s.fail_op, vk::StencilOp::KEEP);
+        assert_eq!(s.depth_fail_op, vk::StencilOp::KEEP);
+        assert_eq!(s.pass_op, vk::StencilOp::KEEP);
+        assert_eq!(s.compare_op, vk::CompareOp::ALWAYS);
+    }
+
+    #[test]
+    fn stencil_face_to_vk() {
+        let s = StencilFaceState {
+            fail_op: vk::StencilOp::REPLACE,
+            depth_fail_op: vk::StencilOp::DECREMENT_AND_CLAMP,
+            pass_op: vk::StencilOp::INCREMENT_AND_CLAMP,
+            compare_op: vk::CompareOp::EQUAL,
+        };
+        let vk_state = s.to_vk();
+        assert_eq!(vk_state.fail_op, vk::StencilOp::REPLACE);
+        assert_eq!(vk_state.depth_fail_op, vk::StencilOp::DECREMENT_AND_CLAMP);
+        assert_eq!(vk_state.pass_op, vk::StencilOp::INCREMENT_AND_CLAMP);
+        assert_eq!(vk_state.compare_op, vk::CompareOp::EQUAL);
+        assert_eq!(vk_state.compare_mask, 0xFF);
+        assert_eq!(vk_state.write_mask, 0xFF);
+        assert_eq!(vk_state.reference, 0);
+    }
+
+    #[test]
+    fn stencil_face_equality() {
+        let a = StencilFaceState::default();
+        let b = StencilFaceState::default();
+        assert_eq!(a, b);
+        let c = StencilFaceState {
+            pass_op: vk::StencilOp::REPLACE,
+            ..Default::default()
+        };
+        assert_ne!(a, c);
+    }
+
+    // --- Specialization constants ---
+
+    #[test]
+    fn spec_constants_affect_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            spec_constant_mask: 1,
+            spec_constants: [42, 0, 0, 0, 0, 0, 0, 0],
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn different_spec_values_different_hash() {
+        let a = StaticPipelineState {
+            spec_constant_mask: 1,
+            spec_constants: [1, 0, 0, 0, 0, 0, 0, 0],
+            ..Default::default()
+        };
+        let b = StaticPipelineState {
+            spec_constant_mask: 1,
+            spec_constants: [2, 0, 0, 0, 0, 0, 0, 0],
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    // --- More state permutations ---
+
+    #[test]
+    fn polygon_mode_affects_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            polygon_mode: vk::PolygonMode::LINE,
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn front_face_affects_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            front_face: vk::FrontFace::CLOCKWISE,
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn stencil_test_affects_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            stencil_test: true,
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn color_write_mask_affects_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            color_write_mask: vk::ColorComponentFlags::R | vk::ColorComponentFlags::G,
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn sample_count_affects_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            rasterization_samples: vk::SampleCountFlags::TYPE_4,
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn conservative_rasterization_affects_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            conservative_rasterization: true,
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
+
+    #[test]
+    fn subgroup_size_affects_hash() {
+        let a = StaticPipelineState::default();
+        let b = StaticPipelineState {
+            subgroup_size_log2: 5,
+            ..Default::default()
+        };
+        assert_ne!(hash_state(&a), hash_state(&b));
+    }
 }

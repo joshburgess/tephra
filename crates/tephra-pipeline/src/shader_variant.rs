@@ -347,4 +347,136 @@ mod tests {
         assert!(!reg.is_compiled(&key));
         assert_eq!(reg.compiled_count(), 0);
     }
+
+    // --- DefineSet set/get ---
+
+    #[test]
+    fn define_set_get() {
+        let mut d = DefineSet::new();
+        d.set_int("X", 42);
+        assert_eq!(d.get("X"), Some(&DefineValue::Int(42)));
+        assert_eq!(d.get("Y"), None);
+    }
+
+    #[test]
+    fn define_set_overwrite() {
+        let mut d = DefineSet::new();
+        d.set_int("X", 1);
+        d.set_int("X", 2);
+        assert_eq!(d.get("X"), Some(&DefineValue::Int(2)));
+        // Should not create a duplicate entry
+        assert_eq!(d.iter().count(), 1);
+    }
+
+    #[test]
+    fn define_set_float() {
+        let mut d = DefineSet::new();
+        d.set_float("PI", std::f64::consts::PI);
+        let preamble = d.to_preamble();
+        assert!(preamble.contains("#define PI"));
+        assert!(preamble.contains("3.14159"));
+    }
+
+    #[test]
+    fn define_set_string() {
+        let mut d = DefineSet::new();
+        d.set_string("BACKEND", "vulkan");
+        assert_eq!(d.get("BACKEND"), Some(&DefineValue::String("vulkan".to_string())));
+        let preamble = d.to_preamble();
+        assert!(preamble.contains("#define BACKEND vulkan"));
+    }
+
+    #[test]
+    fn define_value_bool_false_not_in_preamble() {
+        assert!(DefineValue::Bool(false).to_define_string().is_none());
+    }
+
+    #[test]
+    fn define_value_bool_true_is_one() {
+        assert_eq!(DefineValue::Bool(true).to_define_string(), Some("1".to_string()));
+    }
+
+    // --- ShaderTemplate ---
+
+    #[test]
+    fn template_default_defines() {
+        let template = ShaderTemplate::new("test.vert.glsl", ash::vk::ShaderStageFlags::VERTEX)
+            .define_bool("SKINNED")
+            .define_int("MAX_BONES", 64);
+        let defaults = template.default_defines();
+        assert_eq!(defaults.get("SKINNED"), Some(&DefineValue::Bool(false)));
+        assert_eq!(defaults.get("MAX_BONES"), Some(&DefineValue::Int(64)));
+    }
+
+    #[test]
+    fn template_stage() {
+        let template = ShaderTemplate::new("test.comp.glsl", ash::vk::ShaderStageFlags::COMPUTE);
+        assert_eq!(template.stage, ash::vk::ShaderStageFlags::COMPUTE);
+    }
+
+    // --- Registry extended ---
+
+    #[test]
+    fn registry_invalidate_all() {
+        let mut reg = ShaderVariantRegistry::new();
+        let t1 = reg.register_template(
+            ShaderTemplate::new("a.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
+        );
+        let t2 = reg.register_template(
+            ShaderTemplate::new("b.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
+        );
+        let d = DefineSet::new();
+        let k1 = reg.variant_key(t1, &d);
+        let k2 = reg.variant_key(t2, &d);
+        reg.store_compiled(k1, vec![1]);
+        reg.store_compiled(k2, vec![2]);
+        assert_eq!(reg.compiled_count(), 2);
+
+        reg.invalidate_all();
+        assert_eq!(reg.compiled_count(), 0);
+    }
+
+    #[test]
+    fn registry_get_compiled_returns_spirv() {
+        let mut reg = ShaderVariantRegistry::new();
+        let id = reg.register_template(
+            ShaderTemplate::new("test.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
+        );
+        let d = DefineSet::new();
+        let key = reg.variant_key(id, &d);
+        reg.store_compiled(key, vec![0x07230203, 0x00010000]);
+        let spirv = reg.get_compiled(&key).unwrap();
+        assert_eq!(spirv, &[0x07230203, 0x00010000]);
+    }
+
+    #[test]
+    fn registry_template_lookup() {
+        let mut reg = ShaderVariantRegistry::new();
+        let id = reg.register_template(
+            ShaderTemplate::new("my_shader.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT)
+                .define_bool("ALPHA"),
+        );
+        let t = reg.template(id).unwrap();
+        assert_eq!(t.source_path.to_str().unwrap(), "my_shader.frag.glsl");
+        assert_eq!(t.available_defines.len(), 1);
+        assert!(reg.template(ShaderTemplateId(999)).is_none());
+    }
+
+    #[test]
+    fn invalidate_template_only_removes_matching() {
+        let mut reg = ShaderVariantRegistry::new();
+        let t1 = reg.register_template(
+            ShaderTemplate::new("a.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
+        );
+        let t2 = reg.register_template(
+            ShaderTemplate::new("b.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
+        );
+        let d = DefineSet::new();
+        reg.store_compiled(reg.variant_key(t1, &d), vec![1]);
+        reg.store_compiled(reg.variant_key(t2, &d), vec![2]);
+
+        reg.invalidate_template(t1);
+        assert_eq!(reg.compiled_count(), 1);
+        assert!(reg.is_compiled(&reg.variant_key(t2, &d)));
+    }
 }

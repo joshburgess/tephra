@@ -162,3 +162,111 @@ pub struct ImageViewCreateInfo {
     /// Subresource range.
     pub subresource_range: vk::ImageSubresourceRange,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn immutable_2d_defaults() {
+        let info = ImageCreateInfo::immutable_2d(512, 256, vk::Format::R8G8B8A8_UNORM);
+        assert_eq!(info.width, 512);
+        assert_eq!(info.height, 256);
+        assert_eq!(info.depth, 1);
+        assert_eq!(info.format, vk::Format::R8G8B8A8_UNORM);
+        assert!(info.usage.contains(vk::ImageUsageFlags::SAMPLED));
+        assert!(info.usage.contains(vk::ImageUsageFlags::TRANSFER_DST));
+        assert_eq!(info.mip_levels, 1);
+        assert_eq!(info.array_layers, 1);
+        assert_eq!(info.samples, vk::SampleCountFlags::TYPE_1);
+        assert_eq!(info.image_type, vk::ImageType::TYPE_2D);
+        assert_eq!(info.initial_layout, vk::ImageLayout::UNDEFINED);
+        assert_eq!(info.domain, ImageDomain::Physical);
+    }
+
+    #[test]
+    fn render_target_defaults() {
+        let info = ImageCreateInfo::render_target(1920, 1080, vk::Format::B8G8R8A8_SRGB);
+        assert_eq!(info.width, 1920);
+        assert_eq!(info.height, 1080);
+        assert!(info
+            .usage
+            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
+        assert!(info.usage.contains(vk::ImageUsageFlags::SAMPLED));
+        assert!(!info.usage.contains(vk::ImageUsageFlags::TRANSFER_DST));
+        assert_eq!(info.domain, ImageDomain::Physical);
+    }
+
+    #[test]
+    fn depth_stencil_defaults() {
+        let info = ImageCreateInfo::depth_stencil(800, 600, vk::Format::D32_SFLOAT);
+        assert!(info
+            .usage
+            .contains(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT));
+        assert!(!info
+            .usage
+            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
+        assert_eq!(info.domain, ImageDomain::Physical);
+    }
+
+    #[test]
+    fn transient_attachment_defaults() {
+        let info =
+            ImageCreateInfo::transient_attachment(640, 480, vk::Format::R8G8B8A8_UNORM);
+        assert!(info
+            .usage
+            .contains(vk::ImageUsageFlags::TRANSIENT_ATTACHMENT));
+        assert!(info
+            .usage
+            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
+        assert_eq!(info.domain, ImageDomain::Transient);
+    }
+
+    #[test]
+    fn builder_usage() {
+        let info = ImageCreateInfo::immutable_2d(64, 64, vk::Format::R8G8B8A8_UNORM)
+            .usage(vk::ImageUsageFlags::STORAGE);
+        assert_eq!(info.usage, vk::ImageUsageFlags::STORAGE);
+    }
+
+    #[test]
+    fn builder_mip_levels() {
+        let info = ImageCreateInfo::immutable_2d(256, 256, vk::Format::R8G8B8A8_UNORM)
+            .mip_levels(9);
+        assert_eq!(info.mip_levels, 9);
+    }
+
+    #[test]
+    fn builder_array_layers() {
+        let info = ImageCreateInfo::immutable_2d(64, 64, vk::Format::R8G8B8A8_UNORM)
+            .array_layers(6);
+        assert_eq!(info.array_layers, 6);
+    }
+
+    #[test]
+    fn builder_samples() {
+        let info = ImageCreateInfo::render_target(64, 64, vk::Format::R8G8B8A8_UNORM)
+            .samples(vk::SampleCountFlags::TYPE_4);
+        assert_eq!(info.samples, vk::SampleCountFlags::TYPE_4);
+    }
+
+    #[test]
+    fn builder_domain() {
+        let info = ImageCreateInfo::immutable_2d(64, 64, vk::Format::R8G8B8A8_UNORM)
+            .domain(ImageDomain::Transient);
+        assert_eq!(info.domain, ImageDomain::Transient);
+    }
+
+    #[test]
+    fn builder_chaining() {
+        let info = ImageCreateInfo::immutable_2d(128, 128, vk::Format::R8G8B8A8_UNORM)
+            .mip_levels(5)
+            .array_layers(6)
+            .samples(vk::SampleCountFlags::TYPE_2)
+            .domain(ImageDomain::Transient);
+        assert_eq!(info.mip_levels, 5);
+        assert_eq!(info.array_layers, 6);
+        assert_eq!(info.samples, vk::SampleCountFlags::TYPE_2);
+        assert_eq!(info.domain, ImageDomain::Transient);
+    }
+}

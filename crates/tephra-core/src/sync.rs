@@ -227,3 +227,87 @@ impl Device {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- SemaphorePool (no-GPU unit tests) ---
+
+    #[test]
+    fn semaphore_pool_starts_empty() {
+        let pool = SemaphorePool::new();
+        assert_eq!(pool.free.len(), 0);
+    }
+
+    #[test]
+    fn semaphore_pool_recycle_and_count() {
+        let mut pool = SemaphorePool::new();
+        // Simulate recycling semaphores (using null handles for unit test)
+        pool.recycle(vk::Semaphore::null());
+        pool.recycle(vk::Semaphore::null());
+        assert_eq!(pool.free.len(), 2);
+    }
+
+    // --- FencePool (no-GPU unit tests) ---
+
+    #[test]
+    fn fence_pool_starts_empty() {
+        let pool = FencePool::new();
+        assert_eq!(pool.free.len(), 0);
+    }
+
+    #[test]
+    fn fence_pool_recycle_and_count() {
+        let mut pool = FencePool::new();
+        pool.recycle(vk::Fence::null());
+        pool.recycle(vk::Fence::null());
+        assert_eq!(pool.free.len(), 2);
+    }
+
+    // --- TimelineSemaphore value tracking ---
+
+    #[test]
+    fn timeline_initial_value() {
+        // Can't test full creation without a device, but we can test value tracking
+        // by constructing one with a null handle for logic tests.
+        let ts = TimelineSemaphore {
+            semaphore: vk::Semaphore::null(),
+            value: 0,
+        };
+        assert_eq!(ts.value(), 0);
+        assert_eq!(ts.raw(), vk::Semaphore::null());
+    }
+
+    #[test]
+    fn timeline_next_value_increments() {
+        let mut ts = TimelineSemaphore {
+            semaphore: vk::Semaphore::null(),
+            value: 0,
+        };
+        assert_eq!(ts.next_value(), 1);
+        assert_eq!(ts.next_value(), 2);
+        assert_eq!(ts.next_value(), 3);
+        assert_eq!(ts.value(), 3);
+    }
+
+    #[test]
+    fn timeline_next_value_from_nonzero() {
+        let mut ts = TimelineSemaphore {
+            semaphore: vk::Semaphore::null(),
+            value: 100,
+        };
+        assert_eq!(ts.next_value(), 101);
+        assert_eq!(ts.value(), 101);
+    }
+
+    // --- SemaphoreHandle ---
+
+    #[test]
+    fn semaphore_handle_raw() {
+        let handle = SemaphoreHandle {
+            raw: vk::Semaphore::null(),
+        };
+        assert_eq!(handle.raw(), vk::Semaphore::null());
+    }
+}

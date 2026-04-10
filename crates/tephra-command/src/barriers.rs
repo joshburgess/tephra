@@ -90,3 +90,155 @@ impl ImageBarrierInfo {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ash::vk::Handle;
+
+    fn dummy_image() -> vk::Image {
+        vk::Image::from_raw(42)
+    }
+
+    // --- undefined_to ---
+
+    #[test]
+    fn undefined_to_sets_layouts() {
+        let barrier = ImageBarrierInfo::undefined_to(
+            dummy_image(),
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            vk::AccessFlags2::SHADER_READ,
+            vk::ImageAspectFlags::COLOR,
+        );
+        assert_eq!(barrier.old_layout, vk::ImageLayout::UNDEFINED);
+        assert_eq!(barrier.new_layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+    }
+
+    #[test]
+    fn undefined_to_sets_stages() {
+        let barrier = ImageBarrierInfo::undefined_to(
+            dummy_image(),
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::PipelineStageFlags2::TRANSFER,
+            vk::AccessFlags2::TRANSFER_WRITE,
+            vk::ImageAspectFlags::COLOR,
+        );
+        assert_eq!(barrier.src_stage, vk::PipelineStageFlags2::TOP_OF_PIPE);
+        assert_eq!(barrier.dst_stage, vk::PipelineStageFlags2::TRANSFER);
+        assert_eq!(barrier.src_access, vk::AccessFlags2::NONE);
+        assert_eq!(barrier.dst_access, vk::AccessFlags2::TRANSFER_WRITE);
+    }
+
+    #[test]
+    fn undefined_to_sets_full_subresource() {
+        let barrier = ImageBarrierInfo::undefined_to(
+            dummy_image(),
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            vk::AccessFlags2::SHADER_READ,
+            vk::ImageAspectFlags::DEPTH,
+        );
+        assert_eq!(barrier.subresource_range.aspect_mask, vk::ImageAspectFlags::DEPTH);
+        assert_eq!(barrier.subresource_range.base_mip_level, 0);
+        assert_eq!(barrier.subresource_range.level_count, vk::REMAINING_MIP_LEVELS);
+        assert_eq!(barrier.subresource_range.base_array_layer, 0);
+        assert_eq!(
+            barrier.subresource_range.layer_count,
+            vk::REMAINING_ARRAY_LAYERS
+        );
+    }
+
+    #[test]
+    fn undefined_to_no_queue_transfer() {
+        let barrier = ImageBarrierInfo::undefined_to(
+            dummy_image(),
+            vk::ImageLayout::GENERAL,
+            vk::PipelineStageFlags2::ALL_COMMANDS,
+            vk::AccessFlags2::MEMORY_WRITE,
+            vk::ImageAspectFlags::COLOR,
+        );
+        assert_eq!(barrier.src_queue_family, vk::QUEUE_FAMILY_IGNORED);
+        assert_eq!(barrier.dst_queue_family, vk::QUEUE_FAMILY_IGNORED);
+    }
+
+    // --- color_to_present ---
+
+    #[test]
+    fn color_to_present_layouts() {
+        let barrier = ImageBarrierInfo::color_to_present(dummy_image());
+        assert_eq!(barrier.old_layout, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+        assert_eq!(barrier.new_layout, vk::ImageLayout::PRESENT_SRC_KHR);
+    }
+
+    #[test]
+    fn color_to_present_stages() {
+        let barrier = ImageBarrierInfo::color_to_present(dummy_image());
+        assert_eq!(
+            barrier.src_stage,
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
+        );
+        assert_eq!(barrier.dst_stage, vk::PipelineStageFlags2::BOTTOM_OF_PIPE);
+        assert_eq!(
+            barrier.src_access,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
+        );
+        assert_eq!(barrier.dst_access, vk::AccessFlags2::NONE);
+    }
+
+    #[test]
+    fn color_to_present_single_layer_single_mip() {
+        let barrier = ImageBarrierInfo::color_to_present(dummy_image());
+        assert_eq!(barrier.subresource_range.level_count, 1);
+        assert_eq!(barrier.subresource_range.layer_count, 1);
+        assert_eq!(
+            barrier.subresource_range.aspect_mask,
+            vk::ImageAspectFlags::COLOR
+        );
+    }
+
+    // --- undefined_to_color_attachment ---
+
+    #[test]
+    fn undefined_to_color_attachment_layouts() {
+        let barrier = ImageBarrierInfo::undefined_to_color_attachment(dummy_image());
+        assert_eq!(barrier.old_layout, vk::ImageLayout::UNDEFINED);
+        assert_eq!(barrier.new_layout, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+    }
+
+    #[test]
+    fn undefined_to_color_attachment_stages() {
+        let barrier = ImageBarrierInfo::undefined_to_color_attachment(dummy_image());
+        assert_eq!(barrier.src_stage, vk::PipelineStageFlags2::TOP_OF_PIPE);
+        assert_eq!(
+            barrier.dst_stage,
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
+        );
+        assert_eq!(
+            barrier.dst_access,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
+        );
+    }
+
+    // --- Image handle preserved ---
+
+    #[test]
+    fn barrier_preserves_image_handle() {
+        let img = dummy_image();
+        let b1 = ImageBarrierInfo::color_to_present(img);
+        let b2 = ImageBarrierInfo::undefined_to_color_attachment(img);
+        assert_eq!(b1.image, img);
+        assert_eq!(b2.image, img);
+    }
+
+    // --- Clone ---
+
+    #[test]
+    fn barrier_is_cloneable() {
+        let barrier = ImageBarrierInfo::color_to_present(dummy_image());
+        let cloned = barrier.clone();
+        assert_eq!(cloned.old_layout, barrier.old_layout);
+        assert_eq!(cloned.new_layout, barrier.new_layout);
+        assert_eq!(cloned.image, barrier.image);
+    }
+}
