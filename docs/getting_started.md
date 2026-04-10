@@ -1,4 +1,4 @@
-# Getting Started with ignis
+# Getting Started with tephra
 
 This guide walks through rendering a triangle from scratch.
 
@@ -10,11 +10,11 @@ This guide walks through rendering a triangle from scratch.
 
 ## Project Setup
 
-Add ignis to your `Cargo.toml`:
+Add tephra to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ignis = { path = "crates/ignis" }
+tephra = { path = "crates/tephra" }
 ash = "0.38"
 winit = "0.30"
 ```
@@ -68,10 +68,10 @@ glslc shaders/triangle.frag -o shaders/triangle.frag.spv
 
 ## Minimal Rendering Code
 
-The core rendering loop uses these ignis types:
+The core rendering loop uses these tephra types:
 
 ```rust
-use ignis::prelude::*;
+use tephra::prelude::*;
 ```
 
 ### 1. Create a Window and WSI

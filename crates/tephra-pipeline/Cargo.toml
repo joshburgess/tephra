@@ -1,0 +1,23 @@
+[package]
+name = "tephra-pipeline"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shader reflection, program linking, lazy pipeline compilation, render pass cache"
+
+[dependencies]
+ash = { workspace = true }
+tephra-core = { workspace = true }
+tephra-command = { workspace = true }
+tephra-descriptors = { workspace = true }
+spirv-reflect = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
+rustc-hash = { workspace = true }
+thiserror = { workspace = true }
+bytemuck = { workspace = true }
+notify = { workspace = true, optional = true }
+
+[features]
+hot-reload = ["dep:notify"]

@@ -1,0 +1,14 @@
+[package]
+name = "tephra-command"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Command buffer recording, linear allocators, barrier helpers, state tracking"
+
+[dependencies]
+ash = { workspace = true }
+tephra-core = { workspace = true }
+log = { workspace = true }
+bytemuck = { workspace = true }
+rustc-hash = { workspace = true }

@@ -1,0 +1,82 @@
+[package]
+name = "tephra"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Granite-inspired mid-level Vulkan abstraction layer for Rust"
+
+[dependencies]
+tephra-core = { workspace = true }
+tephra-command = { workspace = true }
+tephra-descriptors = { workspace = true }
+tephra-pipeline = { workspace = true }
+tephra-wsi = { workspace = true }
+tephra-graph = { workspace = true }
+ash = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+env_logger = { workspace = true }
+winit = { workspace = true }
+bytemuck = { workspace = true }
+criterion = { workspace = true }
+rustc-hash = { workspace = true }
+
+[[example]]
+name = "01_triangle"
+
+[[example]]
+name = "02_textured_quad"
+
+[[example]]
+name = "03_multi_pass"
+
+[[example]]
+name = "04_render_graph"
+
+[[example]]
+name = "05_compute"
+
+[[example]]
+name = "06_async_transfer"
+
+[[example]]
+name = "07_dynamic_rendering"
+
+[[example]]
+name = "08_push_descriptors"
+
+[[example]]
+name = "09_bindless"
+
+[[example]]
+name = "10_async_pipeline"
+
+[[example]]
+name = "11_compute_variants"
+
+[[example]]
+name = "12_headless_render"
+
+[[example]]
+name = "13_mipmap_generation"
+
+[[example]]
+name = "14_gpu_timestamps"
+
+[[example]]
+name = "15_state_save_restore"
+
+[[bench]]
+name = "pipeline_cache"
+harness = false
+
+[[bench]]
+name = "descriptor_cache"
+harness = false
+
+[[bench]]
+name = "state_hashing"
+harness = false

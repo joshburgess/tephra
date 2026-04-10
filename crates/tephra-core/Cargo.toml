@@ -1,0 +1,17 @@
+[package]
+name = "tephra-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Core Vulkan abstractions: context, device, frame contexts, buffers, images, samplers"
+
+[dependencies]
+ash = { workspace = true }
+gpu-allocator = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
+rustc-hash = { workspace = true }
+bitflags = { workspace = true }
+thiserror = { workspace = true }
+bytemuck = { workspace = true }

@@ -1,35 +1,35 @@
-# ignis Architecture
+# tephra Architecture
 
-ignis is a mid-level Vulkan abstraction layer inspired by [Granite](https://github.com/Themaister/Granite)'s `vulkan/` layer. It sits between raw Vulkan and a full engine, providing OpenGL/D3D11-style convenience while retaining Vulkan's explicit control.
+tephra is a mid-level Vulkan abstraction layer inspired by [Granite](https://github.com/Themaister/Granite)'s `vulkan/` layer. It sits between raw Vulkan and a full engine, providing OpenGL/D3D11-style convenience while retaining Vulkan's explicit control.
 
 ## Crate Dependency Graph
 
 ```
-ignis (umbrella)
+tephra (umbrella)
   |
-  +-- ignis-graph         Render graph
-  |     +-- ignis-pipeline
-  |     +-- ignis-command
-  |     +-- ignis-core
+  +-- tephra-graph         Render graph
+  |     +-- tephra-pipeline
+  |     +-- tephra-command
+  |     +-- tephra-core
   |
-  +-- ignis-wsi           Window system integration
-  |     +-- ignis-core
+  +-- tephra-wsi           Window system integration
+  |     +-- tephra-core
   |
-  +-- ignis-pipeline      Shaders, programs, pipelines
-  |     +-- ignis-command
-  |     +-- ignis-descriptors
-  |     +-- ignis-core
+  +-- tephra-pipeline      Shaders, programs, pipelines
+  |     +-- tephra-command
+  |     +-- tephra-descriptors
+  |     +-- tephra-core
   |
-  +-- ignis-command        Command buffers, barriers
-  |     +-- ignis-core
+  +-- tephra-command        Command buffers, barriers
+  |     +-- tephra-core
   |
-  +-- ignis-descriptors   Descriptor sets, binding
-  |     +-- ignis-core
+  +-- tephra-descriptors   Descriptor sets, binding
+  |     +-- tephra-core
   |
-  +-- ignis-core          Context, device, memory, images, buffers
+  +-- tephra-core          Context, device, memory, images, buffers
 ```
 
-Dependencies flow strictly downward. `ignis-core` has no ignis dependencies.
+Dependencies flow strictly downward. `tephra-core` has no tephra dependencies.
 
 ## Key Design Decisions
 

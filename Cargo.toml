@@ -6,7 +6,7 @@ members = ["crates/*"]
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/joshburgess/ignis"
+repository = "https://github.com/joshburgess/tephra"
 
 [workspace.dependencies]
 # Vulkan bindings
@@ -35,12 +35,12 @@ notify = "7.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 
 # Internal crates
-ignis-core = { path = "crates/ignis-core" }
-ignis-command = { path = "crates/ignis-command" }
-ignis-descriptors = { path = "crates/ignis-descriptors" }
-ignis-pipeline = { path = "crates/ignis-pipeline" }
-ignis-wsi = { path = "crates/ignis-wsi" }
-ignis-graph = { path = "crates/ignis-graph" }
+tephra-core = { path = "crates/tephra-core" }
+tephra-command = { path = "crates/tephra-command" }
+tephra-descriptors = { path = "crates/tephra-descriptors" }
+tephra-pipeline = { path = "crates/tephra-pipeline" }
+tephra-wsi = { path = "crates/tephra-wsi" }
+tephra-graph = { path = "crates/tephra-graph" }
 
 # spirv-reflect 0.2.3 has a UB bug: slice::from_raw_parts(null, 0) in convert.rs.
 # Disable debug-mode UB checks for that crate until upstream fixes it.

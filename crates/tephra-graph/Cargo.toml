@@ -1,0 +1,15 @@
+[package]
+name = "tephra-graph"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Render graph: pass declarations, dependency analysis, barrier placement, subpass merging"
+
+[dependencies]
+ash = { workspace = true }
+tephra-core = { workspace = true }
+tephra-command = { workspace = true }
+tephra-pipeline = { workspace = true }
+log = { workspace = true }
+rustc-hash = { workspace = true }

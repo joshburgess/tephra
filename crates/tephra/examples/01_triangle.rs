@@ -1,0 +1,300 @@
+//! Full pipeline triangle using DrawContext.
+//!
+//! Demonstrates the complete integration: shader loading, program creation,
+//! render pass auto-creation, lazy pipeline compilation, and automatic
+//! descriptor set management via DrawContext.
+//!
+//! The triangle uses hardcoded vertex positions and colors in the vertex shader
+//! (no vertex buffer needed), so this exercises the pipeline compilation and
+//! render pass flow without the complexity of vertex buffer management.
+//!
+//! Requires: compiled SPIR-V shaders in `shaders/triangle.{vert,frag}.spv`.
+//! Compile with: `glslc shaders/triangle.vert -o shaders/triangle.vert.spv`
+//!               `glslc shaders/triangle.frag -o shaders/triangle.frag.spv`
+
+use ash::vk;
+use winit::application::ApplicationHandler;
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::window::{Window, WindowId};
+
+use tephra::command::barriers::ImageBarrierInfo;
+use tephra::command::command_buffer::{CommandBuffer, CommandBufferType};
+use tephra::core::context::QueueType;
+use tephra::pipeline::draw_context::{DrawContext, FrameResources};
+use tephra::pipeline::pipeline::VertexInputLayout;
+use tephra::pipeline::program::Program;
+use tephra::pipeline::render_pass::{
+    AttachmentLoadOp, AttachmentStoreOp, ColorAttachmentInfo, RenderPassInfo,
+};
+use tephra::pipeline::shader::Shader;
+use tephra::wsi::platform::WinitPlatform;
+use tephra::wsi::wsi::{WSI, WSIConfig};
+
+/// Helper to load SPIR-V bytes as &[u32], handling alignment.
+fn spirv_from_bytes(bytes: &[u8]) -> Vec<u32> {
+    assert!(
+        bytes.len() % 4 == 0,
+        "SPIR-V size must be a multiple of 4 bytes"
+    );
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
+}
+
+struct App {
+    wsi: Option<WSI>,
+    window: Option<Window>,
+    frame: u64,
+    // Pipeline resources
+    vert_shader: Option<Shader>,
+    frag_shader: Option<Shader>,
+    program: Option<Program>,
+    frame_resources: Option<FrameResources>,
+}
+
+impl App {
+    fn new() -> Self {
+        Self {
+            wsi: None,
+            window: None,
+            frame: 0,
+            vert_shader: None,
+            frag_shader: None,
+            program: None,
+            frame_resources: None,
+        }
+    }
+
+    fn init_pipeline(&mut self) {
+        let wsi = self.wsi.as_ref().unwrap();
+        let device = wsi.device().raw();
+
+        // Load shaders from embedded SPIR-V
+        let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.vert.spv"));
+        let frag_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.frag.spv"));
+
+        let vert_shader = Shader::create(device, vk::ShaderStageFlags::VERTEX, &vert_spirv)
+            .expect("failed to create vertex shader");
+        let frag_shader = Shader::create(device, vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
+            .expect("failed to create fragment shader");
+
+        let program = Program::create(device, &[&vert_shader, &frag_shader])
+            .expect("failed to create program");
+
+        self.vert_shader = Some(vert_shader);
+        self.frag_shader = Some(frag_shader);
+        self.program = Some(program);
+
+        // Create frame resources with a null pipeline cache (no disk persistence for this example)
+        self.frame_resources = Some(FrameResources::new(vk::PipelineCache::null()));
+
+        log::info!("Pipeline initialized: vertex + fragment shaders loaded, program created");
+    }
+
+    fn render(&mut self) {
+        let wsi = self.wsi.as_mut().unwrap();
+
+        let swapchain_image = match wsi.begin_frame() {
+            Ok(img) => img,
+            Err(e) => {
+                log::warn!("begin_frame failed: {e}");
+                return;
+            }
+        };
+
+        let extent = wsi.swapchain_extent();
+        let format = wsi.swapchain_format();
+
+        // Reset per-frame caches
+        self.frame_resources
+            .as_mut()
+            .unwrap()
+            .reset_frame(wsi.device().raw());
+
+        // Allocate command buffer
+        let raw_cmd = wsi
+            .device()
+            .request_command_buffer_raw(QueueType::Graphics)
+            .expect("failed to allocate command buffer");
+        let mut cmd = CommandBuffer::from_raw(
+            raw_cmd,
+            CommandBufferType::Graphics,
+            wsi.device().raw().clone(),
+        );
+
+        // Transition swapchain image: UNDEFINED → COLOR_ATTACHMENT_OPTIMAL
+        cmd.image_barrier(&ImageBarrierInfo::undefined_to(
+            swapchain_image.image,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            vk::ImageAspectFlags::COLOR,
+        ));
+
+        // Set up render pass info for the swapchain
+        let rp_info = RenderPassInfo {
+            color_attachments: vec![ColorAttachmentInfo {
+                format,
+                load_op: AttachmentLoadOp::Clear,
+                store_op: AttachmentStoreOp::Store,
+            }],
+            depth_stencil: None,
+            samples: vk::SampleCountFlags::TYPE_1,
+        };
+
+        // Cycle clear color
+        let t = self.frame as f32 * 0.005;
+        let clear_values = [vk::ClearValue {
+            color: vk::ClearColorValue {
+                float32: [
+                    (t.sin() * 0.15 + 0.1).clamp(0.0, 1.0),
+                    (t.cos() * 0.15 + 0.1).clamp(0.0, 1.0),
+                    0.15,
+                    1.0,
+                ],
+            },
+        }];
+
+        // Use DrawContext for the draw call
+        {
+            let device = wsi.device().raw();
+            let resources = self.frame_resources.as_mut().unwrap();
+            let mut ctx = DrawContext::new(&mut cmd, device, resources);
+
+            ctx.begin_render_pass(&rp_info, extent, &clear_values, &[swapchain_image.view])
+                .expect("failed to begin render pass");
+
+            // Disable backface culling (our hardcoded triangle might face either way)
+            ctx.set_cull_mode(vk::CullModeFlags::NONE);
+
+            // Draw the triangle — pipeline is compiled lazily on first call
+            let program = self.program.as_mut().unwrap();
+            let vertex_layout = VertexInputLayout::default(); // no vertex inputs (hardcoded in shader)
+
+            ctx.draw(program, &vertex_layout, 3, 1, 0, 0)
+                .expect("draw failed");
+
+            ctx.end_render_pass();
+        }
+
+        // Transition: COLOR_ATTACHMENT_OPTIMAL → PRESENT_SRC_KHR
+        cmd.image_barrier(&ImageBarrierInfo {
+            image: swapchain_image.image,
+            old_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            new_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            src_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            src_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            dst_stage: vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+            dst_access: vk::AccessFlags2::NONE,
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
+            src_queue_family: vk::QUEUE_FAMILY_IGNORED,
+            dst_queue_family: vk::QUEUE_FAMILY_IGNORED,
+        });
+
+        // Submit and present
+        if let Err(e) = wsi.end_frame(cmd.raw()) {
+            log::warn!("end_frame failed: {e}");
+        }
+
+        self.frame += 1;
+        self.window.as_ref().unwrap().request_redraw();
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window_attrs = Window::default_attributes()
+            .with_title("tephra — 01 triangle (DrawContext)")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
+
+        let window = event_loop
+            .create_window(window_attrs)
+            .expect("failed to create window");
+
+        let platform = WinitPlatform::new(&window).expect("failed to create winit platform");
+
+        let wsi = WSI::new(&platform, &WSIConfig::default()).expect("failed to initialize WSI");
+
+        self.window = Some(window);
+        self.wsi = Some(wsi);
+
+        self.init_pipeline();
+
+        // Kick off the first frame
+        self.window.as_ref().unwrap().request_redraw();
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Continuous rendering: request a redraw every time the event loop is idle
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Resized(size) => {
+                if let Some(wsi) = &mut self.wsi {
+                    wsi.resize(size.width, size.height);
+                }
+            }
+            WindowEvent::RedrawRequested => {
+                self.render();
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Some(wsi) = &self.wsi {
+            // SAFETY: wait for GPU to be idle before destroying resources
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
+        }
+
+        if let Some(mut program) = self.program.take() {
+            if let Some(wsi) = &self.wsi {
+                program.destroy(wsi.device().raw());
+            }
+        }
+
+        if let Some(mut shader) = self.vert_shader.take() {
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
+            }
+        }
+        if let Some(mut shader) = self.frag_shader.take() {
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
+            }
+        }
+
+        if let Some(mut resources) = self.frame_resources.take() {
+            if let Some(wsi) = &self.wsi {
+                resources.destroy(wsi.device().raw());
+            }
+        }
+    }
+}
+
+fn main() {
+    env_logger::init();
+
+    let event_loop = EventLoop::new().expect("failed to create event loop");
+    event_loop.set_control_flow(ControlFlow::Poll);
+
+    let mut app = App::new();
+    event_loop.run_app(&mut app).expect("event loop error");
+}
