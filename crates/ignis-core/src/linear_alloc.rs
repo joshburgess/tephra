@@ -39,11 +39,7 @@ impl LinearAllocator {
     /// Try to allocate `size` bytes with the given alignment.
     ///
     /// Returns `None` if there isn't enough space in this allocator.
-    fn allocate(
-        &mut self,
-        size: usize,
-        alignment: usize,
-    ) -> Option<TransientAllocation> {
+    fn allocate(&mut self, size: usize, alignment: usize) -> Option<TransientAllocation> {
         // Align the current offset up
         let aligned_offset = (self.offset + alignment - 1) & !(alignment - 1);
         if aligned_offset + size > self.capacity {
@@ -52,9 +48,7 @@ impl LinearAllocator {
 
         // SAFETY: mapped_ptr is valid and the range [aligned_offset..aligned_offset+size]
         // is within the buffer's mapped region. The pointer arithmetic is in-bounds.
-        let ptr = unsafe {
-            NonNull::new_unchecked(self.mapped_ptr.as_ptr().add(aligned_offset))
-        };
+        let ptr = unsafe { NonNull::new_unchecked(self.mapped_ptr.as_ptr().add(aligned_offset)) };
 
         let result = TransientAllocation {
             ptr,
@@ -130,11 +124,7 @@ impl LinearAllocatorPool {
     }
 
     /// Destroy all allocators, freeing their Vulkan resources.
-    pub fn destroy(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut vma::Allocator,
-    ) {
+    pub fn destroy(&mut self, device: &ash::Device, allocator: &mut vma::Allocator) {
         for block in self.active.drain(..).chain(self.free_list.drain(..)) {
             // SAFETY: device is valid, buffer is valid, GPU is idle.
             unsafe {

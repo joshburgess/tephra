@@ -1,7 +1,7 @@
 //! Buffer creation helpers and metadata.
 
-use ash::vk;
 use crate::memory::MemoryDomain;
+use ash::vk;
 
 /// Metadata describing a buffer's properties.
 #[derive(Debug, Clone)]

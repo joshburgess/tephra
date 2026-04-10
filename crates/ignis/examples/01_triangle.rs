@@ -163,13 +163,8 @@ impl App {
             let resources = self.frame_resources.as_mut().unwrap();
             let mut ctx = DrawContext::new(&mut cmd, device, resources);
 
-            ctx.begin_render_pass(
-                &rp_info,
-                extent,
-                &clear_values,
-                &[swapchain_image.view],
-            )
-            .expect("failed to begin render pass");
+            ctx.begin_render_pass(&rp_info, extent, &clear_values, &[swapchain_image.view])
+                .expect("failed to begin render pass");
 
             // Disable backface culling (our hardcoded triangle might face either way)
             ctx.set_cull_mode(vk::CullModeFlags::NONE);
@@ -244,12 +239,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {

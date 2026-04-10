@@ -22,8 +22,8 @@
 //! ```
 
 use std::hash::{Hash, Hasher};
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
 use ash::vk;
@@ -34,8 +34,8 @@ use rustc_hash::{FxHashMap, FxHasher};
 use ignis_command::state::StaticPipelineState;
 
 use crate::pipeline::{
-    build_compute_pipeline, build_dynamic_graphics_pipeline, build_graphics_pipeline,
-    VertexInputLayout,
+    VertexInputLayout, build_compute_pipeline, build_dynamic_graphics_pipeline,
+    build_graphics_pipeline,
 };
 use crate::program::Program;
 
@@ -176,10 +176,7 @@ impl AsyncPipelineCompiler {
         while let Ok(completed) = self.result_receiver.try_recv() {
             let status = match completed.result {
                 Ok(pipeline) => {
-                    debug!(
-                        "Async pipeline compiled (hash={:#x})",
-                        completed.key_hash
-                    );
+                    debug!("Async pipeline compiled (hash={:#x})", completed.key_hash);
                     PipelineStatus::Ready(pipeline)
                 }
                 Err(err) => {
@@ -253,10 +250,7 @@ impl AsyncPipelineCompiler {
             let _ = sender.send(job);
         }
 
-        debug!(
-            "Submitted async graphics pipeline (hash={:#x})",
-            key_hash
-        );
+        debug!("Submitted async graphics pipeline (hash={:#x})", key_hash);
         None
     }
 
@@ -314,10 +308,7 @@ impl AsyncPipelineCompiler {
             let _ = sender.send(job);
         }
 
-        debug!(
-            "Submitted async dynamic pipeline (hash={:#x})",
-            key_hash
-        );
+        debug!("Submitted async dynamic pipeline (hash={:#x})", key_hash);
         None
     }
 
@@ -350,16 +341,12 @@ impl AsyncPipelineCompiler {
             pipeline_layout: program.pipeline_layout(),
         };
 
-        self.compute_cache
-            .insert(key_hash, PipelineStatus::Pending);
+        self.compute_cache.insert(key_hash, PipelineStatus::Pending);
         if let Some(sender) = &self.job_sender {
             let _ = sender.send(job);
         }
 
-        debug!(
-            "Submitted async compute pipeline (hash={:#x})",
-            key_hash
-        );
+        debug!("Submitted async compute pipeline (hash={:#x})", key_hash);
         None
     }
 
@@ -521,12 +508,7 @@ fn worker_loop(
             } => {
                 let result = {
                     let pipeline_cache = shared.pipeline_cache.lock();
-                    build_compute_pipeline(
-                        &shared.device,
-                        *pipeline_cache,
-                        module,
-                        pipeline_layout,
-                    )
+                    build_compute_pipeline(&shared.device, *pipeline_cache, module, pipeline_layout)
                 };
                 CompletedPipeline {
                     key_hash,

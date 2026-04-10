@@ -225,9 +225,7 @@ fn reflect_vertex_inputs(
     Ok(attrs)
 }
 
-fn convert_descriptor_type(
-    dt: spirv_reflect::types::ReflectDescriptorType,
-) -> vk::DescriptorType {
+fn convert_descriptor_type(dt: spirv_reflect::types::ReflectDescriptorType) -> vk::DescriptorType {
     use spirv_reflect::types::ReflectDescriptorType;
     match dt {
         ReflectDescriptorType::Sampler => vk::DescriptorType::SAMPLER,

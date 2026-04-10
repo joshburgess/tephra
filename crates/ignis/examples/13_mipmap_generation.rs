@@ -30,7 +30,10 @@ fn main() {
 
     let mip_count = mip_levels(WIDTH, HEIGHT);
     println!("=== Mipmap Generation Demo ===");
-    println!("Image: {}x{} {:?}, {} mip levels", WIDTH, HEIGHT, FORMAT, mip_count);
+    println!(
+        "Image: {}x{} {:?}, {} mip levels",
+        WIDTH, HEIGHT, FORMAT, mip_count
+    );
 
     // --- Headless device ---
     let config = ContextConfig {
@@ -74,13 +77,13 @@ fn main() {
             let offset = ((y * WIDTH + x) * 4) as usize;
             let checker = ((x / 32) + (y / 32)) % 2 == 0;
             if checker {
-                pixel_data[offset] = 255;     // R
+                pixel_data[offset] = 255; // R
                 pixel_data[offset + 1] = 128; // G
-                pixel_data[offset + 2] = 0;   // B
+                pixel_data[offset + 2] = 0; // B
                 pixel_data[offset + 3] = 255; // A
             } else {
-                pixel_data[offset] = 0;       // R
-                pixel_data[offset + 1] = 64;  // G
+                pixel_data[offset] = 0; // R
+                pixel_data[offset + 1] = 64; // G
                 pixel_data[offset + 2] = 200; // B
                 pixel_data[offset + 3] = 255; // A
             }
@@ -103,7 +106,9 @@ fn main() {
         usage: vk::BufferUsageFlags::TRANSFER_DST,
         domain: MemoryDomain::CachedHost,
     };
-    let readback_buffer = device.create_buffer(&readback_info).expect("readback buffer");
+    let readback_buffer = device
+        .create_buffer(&readback_info)
+        .expect("readback buffer");
 
     // --- Record commands ---
     device.begin_frame().expect("begin_frame");
@@ -111,11 +116,8 @@ fn main() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     // Transition all mip levels: UNDEFINED -> TRANSFER_DST_OPTIMAL
     cmd.image_barrier(&ImageBarrierInfo {
@@ -272,7 +274,8 @@ fn main() {
     let offset = ((cy * mip1_width + cx) * 4) as usize;
     println!(
         "\nMip 1 center pixel ({}, {}): RGBA = ({}, {}, {}, {})",
-        cx, cy,
+        cx,
+        cy,
         mip1_data[offset],
         mip1_data[offset + 1],
         mip1_data[offset + 2],
@@ -281,7 +284,9 @@ fn main() {
 
     // --- Cleanup ---
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     device.destroy_buffer(staging_buffer);
     device.destroy_buffer(readback_buffer);
     device.destroy_image(image_handle);

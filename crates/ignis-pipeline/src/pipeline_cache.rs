@@ -23,17 +23,11 @@ impl PipelineCacheManager {
     ///
     /// If `cache_path` is provided and the file exists, the cache is initialized
     /// from the file's contents. Otherwise, an empty cache is created.
-    pub fn new(
-        device: &ash::Device,
-        cache_path: Option<&Path>,
-    ) -> Result<Self, vk::Result> {
+    pub fn new(device: &ash::Device, cache_path: Option<&Path>) -> Result<Self, vk::Result> {
         let initial_data = cache_path.and_then(|p| std::fs::read(p).ok());
 
         let cache_ci = if let Some(ref data) = initial_data {
-            log::debug!(
-                "Loading pipeline cache from disk ({} bytes)",
-                data.len()
-            );
+            log::debug!("Loading pipeline cache from disk ({} bytes)", data.len());
             vk::PipelineCacheCreateInfo::default().initial_data(data)
         } else {
             vk::PipelineCacheCreateInfo::default()

@@ -29,6 +29,7 @@ pub struct Swapchain {
 
 impl Swapchain {
     /// Create a new swapchain.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         instance: &ash::Instance,
         device: &ash::Device,

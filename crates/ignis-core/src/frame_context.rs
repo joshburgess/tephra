@@ -16,6 +16,7 @@ use crate::sync::TimelineSemaphore;
 pub const FRAME_OVERLAP: usize = 2;
 
 /// A resource scheduled for deferred deletion.
+#[allow(dead_code)]
 pub(crate) enum DeferredDeletion {
     /// A buffer and its memory allocation.
     Buffer(vk::Buffer, vma::Allocation),
@@ -104,14 +105,12 @@ impl FrameContext {
     pub fn command_pool(&self, queue_type: QueueType) -> vk::CommandPool {
         match queue_type {
             QueueType::Graphics => self.graphics_command_pool,
-            QueueType::Compute => {
-                self.compute_command_pool
-                    .unwrap_or(self.graphics_command_pool)
-            }
-            QueueType::Transfer => {
-                self.transfer_command_pool
-                    .unwrap_or(self.graphics_command_pool)
-            }
+            QueueType::Compute => self
+                .compute_command_pool
+                .unwrap_or(self.graphics_command_pool),
+            QueueType::Transfer => self
+                .transfer_command_pool
+                .unwrap_or(self.graphics_command_pool),
         }
     }
 }
@@ -148,8 +147,7 @@ impl FrameContextManager {
         let mut frames = Vec::with_capacity(frame_overlap);
 
         for _ in 0..frame_overlap {
-            let fence_ci =
-                vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
+            let fence_ci = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
             // SAFETY: device is valid, fence_ci is well-formed.
             let fence = unsafe { device.create_fence(&fence_ci, None)? };
 
@@ -293,7 +291,9 @@ impl FrameContextManager {
 
     /// Schedule a resource for deferred deletion in the current frame.
     pub fn schedule_deletion(&mut self, deletion: DeferredDeletion) {
-        self.frames[self.current_index].deletion_queue.push(deletion);
+        self.frames[self.current_index]
+            .deletion_queue
+            .push(deletion);
     }
 
     /// Enable timeline semaphore-based frame synchronization.
@@ -326,11 +326,7 @@ impl FrameContextManager {
     }
 
     /// Flush all deletions across all frame contexts. Called during shutdown.
-    pub fn flush_all(
-        &mut self,
-        device: &ash::Device,
-        allocator: &Mutex<Option<vma::Allocator>>,
-    ) {
+    pub fn flush_all(&mut self, device: &ash::Device, allocator: &Mutex<Option<vma::Allocator>>) {
         for frame in &mut self.frames {
             Self::flush_deletions(device, allocator, &mut frame.deletion_queue);
         }

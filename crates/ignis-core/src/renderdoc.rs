@@ -246,9 +246,7 @@ impl RenderDoc {
             if ptr.is_null() {
                 ""
             } else {
-                std::ffi::CStr::from_ptr(ptr)
-                    .to_str()
-                    .unwrap_or_default()
+                std::ffi::CStr::from_ptr(ptr).to_str().unwrap_or_default()
             }
         }
     }

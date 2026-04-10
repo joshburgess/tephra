@@ -415,7 +415,10 @@ impl Device {
 
         let submit_info = vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
 
-        let queue = self.context.queue(crate::context::QueueType::Graphics).queue;
+        let queue = self
+            .context
+            .queue(crate::context::QueueType::Graphics)
+            .queue;
 
         // SAFETY: queue, cmd are valid.
         unsafe {
@@ -465,7 +468,10 @@ impl Device {
 
         let submit_info = vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
 
-        let queue = self.context.queue(crate::context::QueueType::Graphics).queue;
+        let queue = self
+            .context
+            .queue(crate::context::QueueType::Graphics)
+            .queue;
 
         // SAFETY: queue, cmd, and fence are valid.
         unsafe {

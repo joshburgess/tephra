@@ -52,8 +52,7 @@ impl DescriptorBufferProperties {
     /// Requires `VK_EXT_descriptor_buffer` support.
     pub fn query(instance: &ash::Instance, physical_device: vk::PhysicalDevice) -> Self {
         let mut desc_buf_props = vk::PhysicalDeviceDescriptorBufferPropertiesEXT::default();
-        let mut props2 =
-            vk::PhysicalDeviceProperties2::default().push_next(&mut desc_buf_props);
+        let mut props2 = vk::PhysicalDeviceProperties2::default().push_next(&mut desc_buf_props);
 
         // SAFETY: instance and physical_device are valid.
         unsafe {
@@ -87,19 +86,18 @@ impl DescriptorBufferProperties {
             }
             vk::DescriptorType::SAMPLED_IMAGE => self.sampled_image_descriptor_size,
             vk::DescriptorType::STORAGE_IMAGE => self.storage_image_descriptor_size,
-            vk::DescriptorType::UNIFORM_TEXEL_BUFFER => {
-                self.uniform_texel_buffer_descriptor_size
-            }
-            vk::DescriptorType::STORAGE_TEXEL_BUFFER => {
-                self.storage_texel_buffer_descriptor_size
-            }
+            vk::DescriptorType::UNIFORM_TEXEL_BUFFER => self.uniform_texel_buffer_descriptor_size,
+            vk::DescriptorType::STORAGE_TEXEL_BUFFER => self.storage_texel_buffer_descriptor_size,
             vk::DescriptorType::UNIFORM_BUFFER => self.uniform_buffer_descriptor_size,
             vk::DescriptorType::STORAGE_BUFFER => self.storage_buffer_descriptor_size,
             vk::DescriptorType::ACCELERATION_STRUCTURE_KHR => {
                 self.acceleration_structure_descriptor_size
             }
             _ => {
-                log::warn!("Unknown descriptor type {:?}, using uniform buffer size", ty);
+                log::warn!(
+                    "Unknown descriptor type {:?}, using uniform buffer size",
+                    ty
+                );
                 self.uniform_buffer_descriptor_size
             }
         }
@@ -282,7 +280,11 @@ impl DescriptorBuffer {
         );
         // SAFETY: mapped_ptr is valid for the buffer size, caller ensures bounds.
         unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), self.mapped_ptr.add(offset as usize), data.len());
+            std::ptr::copy_nonoverlapping(
+                data.as_ptr(),
+                self.mapped_ptr.add(offset as usize),
+                data.len(),
+            );
         }
     }
 

@@ -64,8 +64,7 @@ impl Device {
 
         // SAFETY: queue, cmd, semaphores, and fence are valid.
         unsafe {
-            self.raw()
-                .queue_submit(queue, &[submit_info], fence)?;
+            self.raw().queue_submit(queue, &[submit_info], fence)?;
         }
 
         if fence != vk::Fence::null() && fence == self.current_fence() {

@@ -52,7 +52,13 @@ impl PhysicalResources {
         let mut images = vec![vk::Image::null(); num_resources];
         let mut views = vec![vk::ImageView::null(); num_resources];
         let mut formats = vec![vk::Format::UNDEFINED; num_resources];
-        let mut extents = vec![vk::Extent2D { width: 0, height: 0 }; num_resources];
+        let mut extents = vec![
+            vk::Extent2D {
+                width: 0,
+                height: 0
+            };
+            num_resources
+        ];
         let mut owned = Vec::new();
         let backbuffer_index = graph.backbuffer.map(|h| h.index as usize);
 

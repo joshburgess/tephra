@@ -128,7 +128,7 @@ impl CommandBuffer {
 
     /// Insert a single image layout transition barrier.
     pub fn image_barrier(&mut self, barrier: &ImageBarrierInfo) {
-        self.image_barriers(&[barrier.clone()]);
+        self.image_barriers(std::slice::from_ref(barrier));
     }
 
     /// Insert a memory barrier (no image/buffer specifics).
@@ -145,8 +145,8 @@ impl CommandBuffer {
             .dst_stage_mask(dst_stage)
             .dst_access_mask(dst_access);
 
-        let dep_info = vk::DependencyInfo::default()
-            .memory_barriers(std::slice::from_ref(&memory_barrier));
+        let dep_info =
+            vk::DependencyInfo::default().memory_barriers(std::slice::from_ref(&memory_barrier));
 
         // SAFETY: command buffer is valid.
         unsafe {
@@ -157,12 +157,7 @@ impl CommandBuffer {
     // ---- Copy commands ----
 
     /// Copy data between buffers.
-    pub fn copy_buffer(
-        &mut self,
-        src: vk::Buffer,
-        dst: vk::Buffer,
-        regions: &[vk::BufferCopy],
-    ) {
+    pub fn copy_buffer(&mut self, src: vk::Buffer, dst: vk::Buffer, regions: &[vk::BufferCopy]) {
         // SAFETY: command buffer and buffer handles are valid.
         unsafe {
             self.device.cmd_copy_buffer(self.raw, src, dst, regions);
@@ -326,12 +321,7 @@ impl CommandBuffer {
     // ---- Compute ----
 
     /// Dispatch a compute shader.
-    pub fn dispatch(
-        &mut self,
-        group_count_x: u32,
-        group_count_y: u32,
-        group_count_z: u32,
-    ) {
+    pub fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         // SAFETY: command buffer is valid and not inside a render pass.
         unsafe {
             self.device
@@ -343,8 +333,7 @@ impl CommandBuffer {
     pub fn dispatch_indirect(&mut self, buffer: vk::Buffer, offset: vk::DeviceSize) {
         // SAFETY: command buffer and buffer are valid, not inside a render pass.
         unsafe {
-            self.device
-                .cmd_dispatch_indirect(self.raw, buffer, offset);
+            self.device.cmd_dispatch_indirect(self.raw, buffer, offset);
         }
     }
 
@@ -366,11 +355,8 @@ impl CommandBuffer {
 
         // SAFETY: command buffer, render pass, and framebuffer are valid.
         unsafe {
-            self.device.cmd_begin_render_pass(
-                self.raw,
-                &begin_info,
-                vk::SubpassContents::INLINE,
-            );
+            self.device
+                .cmd_begin_render_pass(self.raw, &begin_info, vk::SubpassContents::INLINE);
         }
     }
 
@@ -515,13 +501,7 @@ impl CommandBuffer {
     /// `TRANSFER_DST_OPTIMAL` layout. Each subsequent level is generated
     /// by blitting from the previous level with linear filtering.
     /// All mip levels end in `SHADER_READ_ONLY_OPTIMAL`.
-    pub fn generate_mipmap(
-        &mut self,
-        image: vk::Image,
-        width: u32,
-        height: u32,
-        mip_levels: u32,
-    ) {
+    pub fn generate_mipmap(&mut self, image: vk::Image, width: u32, height: u32, mip_levels: u32) {
         let mut mip_width = width as i32;
         let mut mip_height = height as i32;
 
@@ -737,12 +717,7 @@ impl CommandBuffer {
     // ---- Dynamic state commands ----
 
     /// Set depth bias dynamically.
-    pub fn set_depth_bias(
-        &mut self,
-        constant_factor: f32,
-        clamp: f32,
-        slope_factor: f32,
-    ) {
+    pub fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
         // SAFETY: command buffer is valid.
         unsafe {
             self.device
@@ -849,10 +824,16 @@ impl CommandBuffer {
     }
 
     /// Begin a query.
-    pub fn begin_query(&mut self, query_pool: vk::QueryPool, query: u32, flags: vk::QueryControlFlags) {
+    pub fn begin_query(
+        &mut self,
+        query_pool: vk::QueryPool,
+        query: u32,
+        flags: vk::QueryControlFlags,
+    ) {
         // SAFETY: command buffer and query pool are valid.
         unsafe {
-            self.device.cmd_begin_query(self.raw, query_pool, query, flags);
+            self.device
+                .cmd_begin_query(self.raw, query_pool, query, flags);
         }
     }
 
@@ -868,7 +849,8 @@ impl CommandBuffer {
     pub fn reset_query_pool(&mut self, query_pool: vk::QueryPool, first: u32, count: u32) {
         // SAFETY: command buffer and query pool are valid.
         unsafe {
-            self.device.cmd_reset_query_pool(self.raw, query_pool, first, count);
+            self.device
+                .cmd_reset_query_pool(self.raw, query_pool, first, count);
         }
     }
 
@@ -1004,10 +986,7 @@ impl CommandBuffer {
     ///
     /// Used for compaction (compact mode) or cloning (clone mode).
     /// No-op if `VK_KHR_acceleration_structure` is not available.
-    pub fn copy_acceleration_structure(
-        &mut self,
-        info: &vk::CopyAccelerationStructureInfoKHR<'_>,
-    ) {
+    pub fn copy_acceleration_structure(&mut self, info: &vk::CopyAccelerationStructureInfoKHR<'_>) {
         if let Some(accel) = &self.acceleration_structure {
             // SAFETY: command buffer and copy info are valid.
             unsafe {
@@ -1048,10 +1027,7 @@ impl CommandBuffer {
     ///
     /// Prepares the generated commands buffer for later execution.
     /// No-op if `VK_NV_device_generated_commands` is not available.
-    pub fn preprocess_generated_commands(
-        &mut self,
-        info: &vk::GeneratedCommandsInfoNV<'_>,
-    ) {
+    pub fn preprocess_generated_commands(&mut self, info: &vk::GeneratedCommandsInfoNV<'_>) {
         if let Some(dgc) = &self.device_generated_commands {
             // SAFETY: command buffer and generated commands info are valid.
             unsafe {

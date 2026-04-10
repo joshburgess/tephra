@@ -56,10 +56,22 @@ struct PushConstants {
 // ---------------------------------------------------------------------------
 
 const QUAD_VERTICES: [Vertex; 4] = [
-    Vertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-    Vertex { pos: [ 0.5, -0.5], uv: [1.0, 0.0] },
-    Vertex { pos: [ 0.5,  0.5], uv: [1.0, 1.0] },
-    Vertex { pos: [-0.5,  0.5], uv: [0.0, 1.0] },
+    Vertex {
+        pos: [-0.5, -0.5],
+        uv: [0.0, 0.0],
+    },
+    Vertex {
+        pos: [0.5, -0.5],
+        uv: [1.0, 0.0],
+    },
+    Vertex {
+        pos: [0.5, 0.5],
+        uv: [1.0, 1.0],
+    },
+    Vertex {
+        pos: [-0.5, 0.5],
+        uv: [0.0, 1.0],
+    },
 ];
 
 const QUAD_INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
@@ -215,12 +227,18 @@ impl App {
         let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/quad.vert.spv"));
         let frag_spirv = spirv_from_bytes(include_bytes!("../shaders/quad.frag.spv"));
 
-        let vert_shader =
-            Shader::create(wsi.device().raw(), vk::ShaderStageFlags::VERTEX, &vert_spirv)
-                .expect("failed to create vertex shader");
-        let frag_shader =
-            Shader::create(wsi.device().raw(), vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
-                .expect("failed to create fragment shader");
+        let vert_shader = Shader::create(
+            wsi.device().raw(),
+            vk::ShaderStageFlags::VERTEX,
+            &vert_spirv,
+        )
+        .expect("failed to create vertex shader");
+        let frag_shader = Shader::create(
+            wsi.device().raw(),
+            vk::ShaderStageFlags::FRAGMENT,
+            &frag_spirv,
+        )
+        .expect("failed to create fragment shader");
 
         let program = Program::create(wsi.device().raw(), &[&vert_shader, &frag_shader])
             .expect("failed to create program");
@@ -234,19 +252,13 @@ impl App {
         let vb_data: &[u8] = bytemuck::cast_slice(&QUAD_VERTICES);
         let vertex_buffer = wsi
             .device_mut()
-            .create_buffer_with_data(
-                &BufferCreateInfo::vertex(vb_data.len() as u64),
-                vb_data,
-            )
+            .create_buffer_with_data(&BufferCreateInfo::vertex(vb_data.len() as u64), vb_data)
             .expect("failed to create vertex buffer");
 
         let ib_data: &[u8] = bytemuck::cast_slice(&QUAD_INDICES);
         let index_buffer = wsi
             .device_mut()
-            .create_buffer_with_data(
-                &BufferCreateInfo::index(ib_data.len() as u64),
-                ib_data,
-            )
+            .create_buffer_with_data(&BufferCreateInfo::index(ib_data.len() as u64), ib_data)
             .expect("failed to create index buffer");
 
         self.vertex_buffer = Some(vertex_buffer);
@@ -345,13 +357,8 @@ impl App {
             let resources = self.frame_resources.as_mut().unwrap();
             let mut ctx = DrawContext::new(&mut cmd, device, resources);
 
-            ctx.begin_render_pass(
-                &rp_info,
-                extent,
-                &clear_values,
-                &[swapchain_image.view],
-            )
-            .expect("failed to begin render pass");
+            ctx.begin_render_pass(&rp_info, extent, &clear_values, &[swapchain_image.view])
+                .expect("failed to begin render pass");
 
             ctx.set_cull_mode(vk::CullModeFlags::NONE);
 
@@ -367,11 +374,7 @@ impl App {
 
             // Push MVP
             let program = self.program.as_mut().unwrap();
-            ctx.push_constants_typed(
-                program,
-                vk::ShaderStageFlags::VERTEX,
-                &pc,
-            );
+            ctx.push_constants_typed(program, vk::ShaderStageFlags::VERTEX, &pc);
 
             // Draw indexed quad
             ctx.draw_indexed(program, &self.vertex_layout, 6, 1, 0, 0, 0)
@@ -435,12 +438,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {

@@ -273,11 +273,8 @@ impl App {
             .device()
             .request_command_buffer_raw(QueueType::Graphics)
             .expect("graphics cmd");
-        let mut gfx_cmd = CommandBuffer::from_raw(
-            gfx_cmd_raw,
-            CommandBufferType::Graphics,
-            device_raw.clone(),
-        );
+        let mut gfx_cmd =
+            CommandBuffer::from_raw(gfx_cmd_raw, CommandBufferType::Graphics, device_raw.clone());
 
         if needs_ownership_transfer {
             // Acquire ownership from transfer queue
@@ -414,18 +411,12 @@ impl App {
             let program = self.program.as_mut().unwrap();
             let mut ctx = DrawContext::new(&mut cmd, device, resources);
 
-            ctx.begin_render_pass(
-                &rp_info,
-                extent,
-                &clear_values,
-                &[swapchain_image.view],
-            )
-            .expect("begin render pass");
+            ctx.begin_render_pass(&rp_info, extent, &clear_values, &[swapchain_image.view])
+                .expect("begin render pass");
 
             ctx.set_cull_mode(vk::CullModeFlags::NONE);
             ctx.set_texture(0, 0, texture_view, sampler);
-            ctx.draw(program, &empty_layout, 3, 1, 0, 0)
-                .expect("draw");
+            ctx.draw(program, &empty_layout, 3, 1, 0, 0).expect("draw");
             ctx.end_render_pass();
         }
 
@@ -482,12 +473,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {

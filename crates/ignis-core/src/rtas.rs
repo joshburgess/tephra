@@ -37,12 +37,8 @@ pub enum AccelerationStructureBuildMode {
 impl From<AccelerationStructureBuildMode> for vk::BuildAccelerationStructureModeKHR {
     fn from(mode: AccelerationStructureBuildMode) -> Self {
         match mode {
-            AccelerationStructureBuildMode::Build => {
-                vk::BuildAccelerationStructureModeKHR::BUILD
-            }
-            AccelerationStructureBuildMode::Update => {
-                vk::BuildAccelerationStructureModeKHR::UPDATE
-            }
+            AccelerationStructureBuildMode::Build => vk::BuildAccelerationStructureModeKHR::BUILD,
+            AccelerationStructureBuildMode::Update => vk::BuildAccelerationStructureModeKHR::UPDATE,
         }
     }
 }

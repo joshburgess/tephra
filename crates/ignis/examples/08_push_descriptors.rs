@@ -43,10 +43,22 @@ struct PushConstants {
 }
 
 const QUAD_VERTICES: [Vertex; 4] = [
-    Vertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-    Vertex { pos: [ 0.5, -0.5], uv: [1.0, 0.0] },
-    Vertex { pos: [ 0.5,  0.5], uv: [1.0, 1.0] },
-    Vertex { pos: [-0.5,  0.5], uv: [0.0, 1.0] },
+    Vertex {
+        pos: [-0.5, -0.5],
+        uv: [0.0, 0.0],
+    },
+    Vertex {
+        pos: [0.5, -0.5],
+        uv: [1.0, 0.0],
+    },
+    Vertex {
+        pos: [0.5, 0.5],
+        uv: [1.0, 1.0],
+    },
+    Vertex {
+        pos: [-0.5, 0.5],
+        uv: [0.0, 1.0],
+    },
 ];
 
 const QUAD_INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
@@ -179,12 +191,18 @@ impl App {
         let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/quad.vert.spv"));
         let frag_spirv = spirv_from_bytes(include_bytes!("../shaders/quad.frag.spv"));
 
-        let vert_shader =
-            Shader::create(wsi.device().raw(), vk::ShaderStageFlags::VERTEX, &vert_spirv)
-                .expect("failed to create vertex shader");
-        let frag_shader =
-            Shader::create(wsi.device().raw(), vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
-                .expect("failed to create fragment shader");
+        let vert_shader = Shader::create(
+            wsi.device().raw(),
+            vk::ShaderStageFlags::VERTEX,
+            &vert_spirv,
+        )
+        .expect("failed to create vertex shader");
+        let frag_shader = Shader::create(
+            wsi.device().raw(),
+            vk::ShaderStageFlags::FRAGMENT,
+            &frag_spirv,
+        )
+        .expect("failed to create fragment shader");
 
         // Create program with push descriptors for set 0
         let program = Program::create_with_push_descriptors(
@@ -314,13 +332,8 @@ impl App {
             // Enable push descriptors on this draw context
             ctx.set_push_descriptor_device(push_device);
 
-            ctx.begin_render_pass(
-                &rp_info,
-                extent,
-                &clear_values,
-                &[swapchain_image.view],
-            )
-            .expect("failed to begin render pass");
+            ctx.begin_render_pass(&rp_info, extent, &clear_values, &[swapchain_image.view])
+                .expect("failed to begin render pass");
 
             ctx.set_cull_mode(vk::CullModeFlags::NONE);
 
@@ -395,12 +408,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -419,28 +427,44 @@ impl ApplicationHandler for App {
 impl Drop for App {
     fn drop(&mut self) {
         if let Some(wsi) = &self.wsi {
-            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
         }
         if let Some(mut program) = self.program.take() {
-            if let Some(wsi) = &self.wsi { program.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                program.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut shader) = self.vert_shader.take() {
-            if let Some(wsi) = &self.wsi { shader.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut shader) = self.frag_shader.take() {
-            if let Some(wsi) = &self.wsi { shader.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut resources) = self.frame_resources.take() {
-            if let Some(wsi) = &self.wsi { resources.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                resources.destroy(wsi.device().raw());
+            }
         }
         if let Some(buffer) = self.vertex_buffer.take() {
-            if let Some(wsi) = &mut self.wsi { wsi.device_mut().destroy_buffer(buffer); }
+            if let Some(wsi) = &mut self.wsi {
+                wsi.device_mut().destroy_buffer(buffer);
+            }
         }
         if let Some(buffer) = self.index_buffer.take() {
-            if let Some(wsi) = &mut self.wsi { wsi.device_mut().destroy_buffer(buffer); }
+            if let Some(wsi) = &mut self.wsi {
+                wsi.device_mut().destroy_buffer(buffer);
+            }
         }
         if let Some(image) = self.texture.take() {
-            if let Some(wsi) = &mut self.wsi { wsi.device_mut().destroy_image(image); }
+            if let Some(wsi) = &mut self.wsi {
+                wsi.device_mut().destroy_image(image);
+            }
         }
     }
 }

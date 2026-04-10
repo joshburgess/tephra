@@ -67,15 +67,16 @@ fn main() {
     };
     let output_buffer = device.create_buffer(&output_info).expect("output buffer");
 
-    println!("Buffers created: {} elements ({} bytes each)", ELEMENT_COUNT, data_size);
+    println!(
+        "Buffers created: {} elements ({} bytes each)",
+        ELEMENT_COUNT, data_size
+    );
 
     // --- Load compute shader & create program ---
     let comp_spirv = spirv_from_bytes(include_bytes!("../shaders/double.comp.spv"));
-    let comp_shader =
-        Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &comp_spirv)
-            .expect("compute shader");
-    let mut program =
-        Program::create(device.raw(), &[&comp_shader]).expect("compute program");
+    let comp_shader = Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &comp_spirv)
+        .expect("compute shader");
+    let mut program = Program::create(device.raw(), &[&comp_shader]).expect("compute program");
 
     println!("Compute shader loaded, program created");
 
@@ -86,11 +87,8 @@ fn main() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -107,14 +105,7 @@ fn main() {
     // --- Submit and wait ---
     let fence = device.current_fence();
     device
-        .submit_command_buffer(
-            cmd.raw(),
-            QueueType::Graphics,
-            &[],
-            &[],
-            &[],
-            fence,
-        )
+        .submit_command_buffer(cmd.raw(), QueueType::Graphics, &[], &[], &[], fence)
         .expect("submit");
 
     // SAFETY: fence is valid.
@@ -141,7 +132,10 @@ fn main() {
     }
 
     if all_correct {
-        println!("All {} results correct! (each element doubled)", ELEMENT_COUNT);
+        println!(
+            "All {} results correct! (each element doubled)",
+            ELEMENT_COUNT
+        );
         println!("  Input:  {:?}", &input_data[..8]);
         println!("  Output: {:?}", &results[..8]);
     } else {
@@ -150,7 +144,9 @@ fn main() {
 
     // --- Cleanup ---
     // SAFETY: GPU is idle (we waited on fence above).
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
 
     program.destroy(device.raw());
     // Shader module can be destroyed immediately (not needed after pipeline creation)

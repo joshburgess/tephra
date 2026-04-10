@@ -31,10 +31,7 @@ impl log::Log for ValidationCapture {
         if record.level() == log::Level::Error {
             let msg = format!("{}", record.args());
             if msg.contains("[VALIDATION]") {
-                VALIDATION_ERRORS
-                    .lock()
-                    .unwrap()
-                    .push(msg);
+                VALIDATION_ERRORS.lock().unwrap().push(msg);
             }
         }
     }

@@ -140,11 +140,7 @@ impl FossilizeRecorder {
             file.write_all(data)?;
         }
 
-        log::debug!(
-            "Fossilize: flushed {} entries to {:?}",
-            count,
-            self.path
-        );
+        log::debug!("Fossilize: flushed {} entries to {:?}", count, self.path);
 
         Ok(())
     }
@@ -261,6 +257,8 @@ pub fn replay_into_cache(
     // 3. Reconstruct render passes from recorded state
     // 4. Create pipelines with the pipeline cache
     // 5. Immediately destroy the pipelines (they're cached)
-    log::debug!("Fossilize: replay_into_cache is a stub — full replay requires state deserialization");
+    log::debug!(
+        "Fossilize: replay_into_cache is a stub — full replay requires state deserialization"
+    );
     Ok(0)
 }

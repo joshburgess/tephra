@@ -211,12 +211,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -235,19 +230,29 @@ impl ApplicationHandler for App {
 impl Drop for App {
     fn drop(&mut self) {
         if let Some(wsi) = &self.wsi {
-            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
         }
         if let Some(mut program) = self.program.take() {
-            if let Some(wsi) = &self.wsi { program.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                program.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut shader) = self.vert_shader.take() {
-            if let Some(wsi) = &self.wsi { shader.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut shader) = self.frag_shader.take() {
-            if let Some(wsi) = &self.wsi { shader.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut resources) = self.frame_resources.take() {
-            if let Some(wsi) = &self.wsi { resources.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                resources.destroy(wsi.device().raw());
+            }
         }
     }
 }

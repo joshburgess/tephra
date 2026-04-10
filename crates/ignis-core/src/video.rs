@@ -124,10 +124,10 @@ pub fn query_decode_capabilities(
 
     // SAFETY: loader, physical_device, and profile_info are valid.
     let result = unsafe {
-        (video_queue_loader.fp().get_physical_device_video_capabilities_khr)(
-            physical_device,
-            &profile_info,
-            &mut caps,
+        (video_queue_loader
+            .fp()
+            .get_physical_device_video_capabilities_khr)(
+            physical_device, &profile_info, &mut caps
         )
     };
 

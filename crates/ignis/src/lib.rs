@@ -12,12 +12,12 @@
 //! - [`graph`] — Render graph with automatic pass ordering and barriers
 //! - [`renderer`] — High-level pipeline context combining compilation and caching
 
-pub use ignis_core as core;
 pub use ignis_command as command;
+pub use ignis_core as core;
 pub use ignis_descriptors as descriptors;
+pub use ignis_graph as graph;
 pub use ignis_pipeline as pipeline;
 pub use ignis_wsi as wsi;
-pub use ignis_graph as graph;
 
 pub mod prelude;
 pub mod renderer;

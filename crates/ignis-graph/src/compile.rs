@@ -240,11 +240,7 @@ fn find_reachable(
 }
 
 /// Kahn's algorithm: topological sort of reachable passes.
-fn topological_sort(
-    deps: &[Vec<usize>],
-    reachable: &[bool],
-    num_passes: usize,
-) -> Vec<usize> {
+fn topological_sort(deps: &[Vec<usize>], reachable: &[bool], num_passes: usize) -> Vec<usize> {
     let mut in_degree = vec![0u32; num_passes];
     let mut successors: Vec<Vec<usize>> = vec![Vec::new(); num_passes];
 
@@ -355,21 +351,42 @@ mod tests {
 
     #[test]
     fn needs_barrier_different_access_types() {
-        assert!(needs_barrier(AccessType::ColorOutput, AccessType::TextureInput));
-        assert!(needs_barrier(AccessType::StorageWrite, AccessType::StorageRead));
-        assert!(needs_barrier(AccessType::DepthStencilOutput, AccessType::DepthStencilInput));
+        assert!(needs_barrier(
+            AccessType::ColorOutput,
+            AccessType::TextureInput
+        ));
+        assert!(needs_barrier(
+            AccessType::StorageWrite,
+            AccessType::StorageRead
+        ));
+        assert!(needs_barrier(
+            AccessType::DepthStencilOutput,
+            AccessType::DepthStencilInput
+        ));
     }
 
     #[test]
     fn needs_barrier_same_write_access() {
-        assert!(needs_barrier(AccessType::ColorOutput, AccessType::ColorOutput));
-        assert!(needs_barrier(AccessType::StorageWrite, AccessType::StorageWrite));
+        assert!(needs_barrier(
+            AccessType::ColorOutput,
+            AccessType::ColorOutput
+        ));
+        assert!(needs_barrier(
+            AccessType::StorageWrite,
+            AccessType::StorageWrite
+        ));
     }
 
     #[test]
     fn no_barrier_same_read_access() {
-        assert!(!needs_barrier(AccessType::TextureInput, AccessType::TextureInput));
-        assert!(!needs_barrier(AccessType::StorageRead, AccessType::StorageRead));
+        assert!(!needs_barrier(
+            AccessType::TextureInput,
+            AccessType::TextureInput
+        ));
+        assert!(!needs_barrier(
+            AccessType::StorageRead,
+            AccessType::StorageRead
+        ));
         assert!(!needs_barrier(
             AccessType::DepthStencilInput,
             AccessType::DepthStencilInput
@@ -404,7 +421,10 @@ mod tests {
     fn access_info_depth_stencil() {
         let (_, _, layout_out) = access_info(AccessType::DepthStencilOutput);
         let (_, _, layout_in) = access_info(AccessType::DepthStencilInput);
-        assert_eq!(layout_out, vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        assert_eq!(
+            layout_out,
+            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        );
         assert_eq!(layout_in, vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL);
     }
 

@@ -43,7 +43,10 @@ impl GpuVendor {
 
     /// Whether this is a mobile/tile-based deferred rendering GPU.
     pub fn is_tbdr(&self) -> bool {
-        matches!(self, Self::Arm | Self::Qualcomm | Self::Apple | Self::Samsung)
+        matches!(
+            self,
+            Self::Arm | Self::Qualcomm | Self::Apple | Self::Samsung
+        )
     }
 }
 

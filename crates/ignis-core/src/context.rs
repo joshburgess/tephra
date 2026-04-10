@@ -176,8 +176,8 @@ impl Context {
     pub fn new(config: &ContextConfig) -> Result<Self, ContextError> {
         // Load Vulkan library
         // SAFETY: Loading the Vulkan library is safe assuming a conformant Vulkan driver is installed.
-        let entry = unsafe { ash::Entry::load() }
-            .map_err(|e| ContextError::LoadingError(e.to_string()))?;
+        let entry =
+            unsafe { ash::Entry::load() }.map_err(|e| ContextError::LoadingError(e.to_string()))?;
 
         // Build instance extensions list
         let mut instance_extensions: Vec<*const std::ffi::c_char> = Vec::new();
@@ -195,8 +195,7 @@ impl Context {
         #[cfg(target_os = "macos")]
         {
             instance_extensions.push(ash::khr::portability_enumeration::NAME.as_ptr());
-            instance_extensions
-                .push(ash::khr::get_physical_device_properties2::NAME.as_ptr());
+            instance_extensions.push(ash::khr::get_physical_device_properties2::NAME.as_ptr());
         }
 
         let app_info = vk::ApplicationInfo::default()
@@ -258,10 +257,9 @@ impl Context {
                 .pfn_user_callback(Some(debug_callback));
 
             // SAFETY: debug_utils_loader and messenger_ci are valid.
-            let messenger = unsafe {
-                debug_utils_loader.create_debug_utils_messenger(&messenger_ci, None)
-            }
-            .map_err(ContextError::InstanceCreation)?;
+            let messenger =
+                unsafe { debug_utils_loader.create_debug_utils_messenger(&messenger_ci, None) }
+                    .map_err(ContextError::InstanceCreation)?;
 
             (Some(debug_utils_loader), Some(messenger))
         } else {
@@ -277,11 +275,11 @@ impl Context {
             return Err(ContextError::NoSuitableDevice);
         }
 
-        let (physical_device, queue_indices) = Self::select_physical_device(&instance, &physical_devices)?;
+        let (physical_device, queue_indices) =
+            Self::select_physical_device(&instance, &physical_devices)?;
 
         // SAFETY: physical_device is a valid handle from enumeration.
-        let device_properties =
-            unsafe { instance.get_physical_device_properties(physical_device) };
+        let device_properties = unsafe { instance.get_physical_device_properties(physical_device) };
 
         let device_name = {
             // SAFETY: device_name is a null-terminated C string from the driver.
@@ -312,10 +310,9 @@ impl Context {
         unsafe { instance.get_physical_device_features2(physical_device, &mut features2) };
 
         // Check for optional device extensions
-        let device_extension_props = unsafe {
-            instance.enumerate_device_extension_properties(physical_device)
-        }
-        .unwrap_or_default();
+        let device_extension_props =
+            unsafe { instance.enumerate_device_extension_properties(physical_device) }
+                .unwrap_or_default();
 
         let has_push_descriptor = device_extension_props.iter().any(|ext| {
             // SAFETY: extension_name is a null-terminated C string from the driver.
@@ -323,18 +320,15 @@ impl Context {
             name == ash::khr::push_descriptor::NAME
         });
 
-        let has_descriptor_indexing =
-            vulkan_12_features.descriptor_binding_partially_bound == vk::TRUE
-                && vulkan_12_features.descriptor_binding_sampled_image_update_after_bind
-                    == vk::TRUE
-                && vulkan_12_features.descriptor_binding_storage_buffer_update_after_bind
-                    == vk::TRUE
-                && vulkan_12_features.runtime_descriptor_array == vk::TRUE
-                && vulkan_12_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
-                && vulkan_12_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE;
+        let has_descriptor_indexing = vulkan_12_features.descriptor_binding_partially_bound
+            == vk::TRUE
+            && vulkan_12_features.descriptor_binding_sampled_image_update_after_bind == vk::TRUE
+            && vulkan_12_features.descriptor_binding_storage_buffer_update_after_bind == vk::TRUE
+            && vulkan_12_features.runtime_descriptor_array == vk::TRUE
+            && vulkan_12_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
+            && vulkan_12_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE;
 
-        let has_buffer_device_address =
-            vulkan_12_features.buffer_device_address == vk::TRUE;
+        let has_buffer_device_address = vulkan_12_features.buffer_device_address == vk::TRUE;
 
         let device_features = DeviceFeatures {
             timeline_semaphore: vulkan_12_features.timeline_semaphore == vk::TRUE,
@@ -391,19 +385,13 @@ impl Context {
         let mut enabled_12_features = vk::PhysicalDeviceVulkan12Features::default()
             .timeline_semaphore(device_features.timeline_semaphore)
             .descriptor_binding_partially_bound(device_features.descriptor_indexing)
-            .descriptor_binding_sampled_image_update_after_bind(
-                device_features.descriptor_indexing,
-            )
+            .descriptor_binding_sampled_image_update_after_bind(device_features.descriptor_indexing)
             .descriptor_binding_storage_buffer_update_after_bind(
                 device_features.descriptor_indexing,
             )
             .runtime_descriptor_array(device_features.descriptor_indexing)
-            .shader_sampled_image_array_non_uniform_indexing(
-                device_features.descriptor_indexing,
-            )
-            .shader_storage_buffer_array_non_uniform_indexing(
-                device_features.descriptor_indexing,
-            )
+            .shader_sampled_image_array_non_uniform_indexing(device_features.descriptor_indexing)
+            .shader_storage_buffer_array_non_uniform_indexing(device_features.descriptor_indexing)
             .buffer_device_address(device_features.buffer_device_address);
         let mut enabled_13_features = vk::PhysicalDeviceVulkan13Features::default()
             .synchronization2(device_features.synchronization2)
@@ -498,9 +486,9 @@ impl Context {
                 unsafe { instance.get_physical_device_queue_family_properties(phys_dev) };
 
             // Must have a graphics queue
-            let graphics = queue_families.iter().position(|qf| {
-                qf.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-            });
+            let graphics = queue_families
+                .iter()
+                .position(|qf| qf.queue_flags.contains(vk::QueueFlags::GRAPHICS));
             let graphics = match graphics {
                 Some(idx) => idx as u32,
                 None => continue,
@@ -517,9 +505,9 @@ impl Context {
                 })
                 .or_else(|| {
                     // Fall back to any compute-capable queue
-                    queue_families.iter().position(|qf| {
-                        qf.queue_flags.contains(vk::QueueFlags::COMPUTE)
-                    })
+                    queue_families
+                        .iter()
+                        .position(|qf| qf.queue_flags.contains(vk::QueueFlags::COMPUTE))
                 })
                 .unwrap_or(graphics as usize) as u32;
 
@@ -537,8 +525,7 @@ impl Context {
                 .or_else(|| {
                     // Fall back to any transfer-capable queue that isn't graphics
                     queue_families.iter().enumerate().position(|(i, qf)| {
-                        qf.queue_flags.contains(vk::QueueFlags::TRANSFER)
-                            && i as u32 != graphics
+                        qf.queue_flags.contains(vk::QueueFlags::TRANSFER) && i as u32 != graphics
                     })
                 })
                 .unwrap_or(graphics as usize) as u32;
@@ -571,7 +558,10 @@ impl Context {
                 transfer,
             };
 
-            if best.as_ref().is_none_or(|(_, _, best_score)| score > *best_score) {
+            if best
+                .as_ref()
+                .is_none_or(|(_, _, best_score)| score > *best_score)
+            {
                 best = Some((phys_dev, indices, score));
             }
         }
@@ -678,8 +668,7 @@ impl Drop for Context {
 
             self.device.destroy_device(None);
 
-            if let (Some(debug_utils), Some(messenger)) =
-                (&self.debug_utils, self.debug_messenger)
+            if let (Some(debug_utils), Some(messenger)) = (&self.debug_utils, self.debug_messenger)
             {
                 debug_utils.destroy_debug_utils_messenger(messenger, None);
             }

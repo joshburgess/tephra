@@ -131,10 +131,7 @@ impl PipelineBinaryCache {
         Ok(())
     }
 
-    fn load_binary_file(
-        &self,
-        path: &std::path::Path,
-    ) -> std::io::Result<PipelineBinaryData> {
+    fn load_binary_file(&self, path: &std::path::Path) -> std::io::Result<PipelineBinaryData> {
         use std::io::Read;
 
         let mut file = std::fs::File::open(path)?;

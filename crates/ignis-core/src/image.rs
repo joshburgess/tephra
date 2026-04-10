@@ -1,7 +1,7 @@
 //! Image creation helpers, staging, and metadata.
 
-use ash::vk;
 use crate::memory::ImageDomain;
+use ash::vk;
 
 /// Metadata describing an image's properties.
 #[derive(Debug, Clone)]
@@ -109,7 +109,8 @@ impl ImageCreateInfo {
             height,
             depth: 1,
             format,
-            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
             mip_levels: 1,
             array_layers: 1,
             samples: vk::SampleCountFlags::TYPE_1,

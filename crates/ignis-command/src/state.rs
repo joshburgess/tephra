@@ -151,8 +151,8 @@ impl Default for StaticPipelineState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     fn hash_state(state: &StaticPipelineState) -> u64 {
         let mut hasher = DefaultHasher::new();

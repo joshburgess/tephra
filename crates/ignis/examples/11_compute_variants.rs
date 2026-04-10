@@ -60,7 +60,10 @@ fn main() {
     let key_b = registry.variant_key(template_id, &variant_b);
     println!("Variant A key hash: {:#018x}", key_a.define_hash);
     println!("Variant B key hash: {:#018x}", key_b.define_hash);
-    assert_ne!(key_a.define_hash, key_b.define_hash, "Different defines must have different hashes");
+    assert_ne!(
+        key_a.define_hash, key_b.define_hash,
+        "Different defines must have different hashes"
+    );
 
     // Store pre-compiled SPIR-V for variant A (in a real app, this would come from glslc)
     let spirv_a = spirv_from_bytes(include_bytes!("../shaders/double.comp.spv"));
@@ -87,9 +90,11 @@ fn main() {
     println!("Device created (headless compute)");
 
     // Use the compiled variant SPIR-V from registry
-    let spirv = registry.get_compiled(&key_a).expect("variant A should be compiled");
-    let comp_shader = Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, spirv)
-        .expect("compute shader");
+    let spirv = registry
+        .get_compiled(&key_a)
+        .expect("variant A should be compiled");
+    let comp_shader =
+        Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, spirv).expect("compute shader");
     let mut program = Program::create(device.raw(), &[&comp_shader]).expect("compute program");
 
     // Prepare buffers
@@ -120,11 +125,8 @@ fn main() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -164,7 +166,10 @@ fn main() {
     }
 
     if all_correct {
-        println!("All {} results correct! (variant A: each element doubled)", ELEMENT_COUNT);
+        println!(
+            "All {} results correct! (variant A: each element doubled)",
+            ELEMENT_COUNT
+        );
         println!("  Input:  {:?}", &input_data[..8]);
         println!("  Output: {:?}", &results[..8]);
     } else {
@@ -173,7 +178,9 @@ fn main() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     program.destroy(device.raw());
     let mut comp_shader = comp_shader;
     comp_shader.destroy(device.raw());

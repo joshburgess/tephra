@@ -8,7 +8,7 @@ use ignis_command::barriers::ImageBarrierInfo;
 use ignis_command::command_buffer::CommandBuffer;
 
 use crate::allocate::PhysicalResources;
-use crate::compile::{access_info, CompiledGraph, ResourceBarrier};
+use crate::compile::{CompiledGraph, ResourceBarrier, access_info};
 use crate::pass::{AccessType, PassDeclaration};
 use crate::resource::{ResourceDeclaration, ResourceInfo};
 
@@ -30,11 +30,7 @@ impl GraphExecutor {
     ///
     /// After all passes, emits a final barrier to transition the backbuffer
     /// to `PRESENT_SRC_KHR`.
-    pub fn record(
-        graph: &CompiledGraph,
-        cmd: &mut CommandBuffer,
-        resources: &PhysicalResources,
-    ) {
+    pub fn record(graph: &CompiledGraph, cmd: &mut CommandBuffer, resources: &PhysicalResources) {
         let images = resources.images();
 
         for (step, &pass_idx) in graph.pass_order.iter().enumerate() {
@@ -77,7 +73,10 @@ fn begin_pass_rendering(
     let mut color_attachments: Vec<vk::RenderingAttachmentInfo<'_>> = Vec::new();
     let mut depth_attachment: Option<vk::RenderingAttachmentInfo<'_>> = None;
     let mut stencil_attachment: Option<vk::RenderingAttachmentInfo<'_>> = None;
-    let mut render_extent = vk::Extent2D { width: 0, height: 0 };
+    let mut render_extent = vk::Extent2D {
+        width: 0,
+        height: 0,
+    };
     let mut color_index: usize = 0;
 
     let views = resources.views();
@@ -93,11 +92,12 @@ fn begin_pass_rendering(
         match access.access_type {
             AccessType::ColorOutput => {
                 render_extent = max_extent(render_extent, extent);
-                let clear_color = callback
-                    .map(|cb| cb.clear_color(color_index))
-                    .unwrap_or(vk::ClearColorValue {
-                        float32: [0.0, 0.0, 0.0, 1.0],
-                    });
+                let clear_color =
+                    callback
+                        .map(|cb| cb.clear_color(color_index))
+                        .unwrap_or(vk::ClearColorValue {
+                            float32: [0.0, 0.0, 0.0, 1.0],
+                        });
                 color_index += 1;
                 color_attachments.push(
                     vk::RenderingAttachmentInfo::default()
@@ -121,12 +121,12 @@ fn begin_pass_rendering(
             AccessType::DepthStencilOutput => {
                 render_extent = max_extent(render_extent, extent);
                 let format = formats[idx];
-                let clear_ds = callback
-                    .map(|cb| cb.clear_depth_stencil())
-                    .unwrap_or(vk::ClearDepthStencilValue {
+                let clear_ds = callback.map(|cb| cb.clear_depth_stencil()).unwrap_or(
+                    vk::ClearDepthStencilValue {
                         depth: 1.0,
                         stencil: 0,
-                    });
+                    },
+                );
                 let attachment = vk::RenderingAttachmentInfo::default()
                     .image_view(view)
                     .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)

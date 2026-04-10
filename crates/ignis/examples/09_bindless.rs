@@ -101,18 +101,18 @@ impl App {
             .expect("failed to create fragment shader module");
 
         // Create bindless table (small capacity for the example)
-        let mut bindless = BindlessTable::with_capacity(&device, 16, 0)
-            .expect("failed to create bindless table");
+        let mut bindless =
+            BindlessTable::with_capacity(&device, 16, 0).expect("failed to create bindless table");
 
         // Get a stock linear sampler
         self.sampler = wsi.device().stock_sampler(StockSampler::LinearClamp);
 
         // Create 4 colored textures and register them
         let colors: [(u8, u8, u8); 4] = [
-            (220, 50, 50),   // red
-            (50, 200, 50),   // green
-            (50, 80, 220),   // blue
-            (220, 200, 50),  // yellow
+            (220, 50, 50),  // red
+            (50, 200, 50),  // green
+            (50, 80, 220),  // blue
+            (220, 200, 50), // yellow
         ];
 
         for (r, g, b) in colors {
@@ -157,13 +157,7 @@ impl App {
 
         // Create graphics pipeline with dynamic rendering
         let format = wsi.swapchain_format();
-        let pipeline = create_pipeline(
-            &device,
-            vert_module,
-            frag_module,
-            pipeline_layout,
-            format,
-        );
+        let pipeline = create_pipeline(&device, vert_module, frag_module, pipeline_layout, format);
 
         self.vert_module = vert_module;
         self.frag_module = frag_module;
@@ -171,7 +165,10 @@ impl App {
         self.pipeline_layout = pipeline_layout;
         self.pipeline = pipeline;
 
-        log::info!("Bindless pipeline initialized with {} textures", self.texture_indices.len());
+        log::info!(
+            "Bindless pipeline initialized with {} textures",
+            self.texture_indices.len()
+        );
     }
 
     fn render(&mut self) {
@@ -186,7 +183,7 @@ impl App {
         };
 
         let extent = wsi.swapchain_extent();
-        let format = wsi.swapchain_format();
+        let _format = wsi.swapchain_format();
 
         let raw_cmd = wsi
             .device()
@@ -238,18 +235,24 @@ impl App {
         );
 
         // Set viewport and scissor
-        cmd.set_viewport(0, &[vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: extent.width as f32,
-            height: extent.height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        }]);
-        cmd.set_scissor(0, &[vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent,
-        }]);
+        cmd.set_viewport(
+            0,
+            &[vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: extent.width as f32,
+                height: extent.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            }],
+        );
+        cmd.set_scissor(
+            0,
+            &[vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent,
+            }],
+        );
 
         // Cycle texture every ~120 frames
         let tex_idx = (self.frame / 120) as usize % self.texture_indices.len();
@@ -340,8 +343,8 @@ fn create_pipeline(
     let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
         .color_write_mask(vk::ColorComponentFlags::RGBA);
     let blend_attachments = [blend_attachment];
-    let color_blend = vk::PipelineColorBlendStateCreateInfo::default()
-        .attachments(&blend_attachments);
+    let color_blend =
+        vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
 
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
     let dynamic_state =
@@ -398,12 +401,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -423,14 +421,20 @@ impl Drop for App {
     fn drop(&mut self) {
         if let Some(wsi) = &self.wsi {
             // SAFETY: waiting for GPU idle before destroying resources.
-            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
             let device = wsi.device().raw();
 
             if self.pipeline != vk::Pipeline::null() {
-                unsafe { device.destroy_pipeline(self.pipeline, None); }
+                unsafe {
+                    device.destroy_pipeline(self.pipeline, None);
+                }
             }
             if self.pipeline_layout != vk::PipelineLayout::null() {
-                unsafe { device.destroy_pipeline_layout(self.pipeline_layout, None); }
+                unsafe {
+                    device.destroy_pipeline_layout(self.pipeline_layout, None);
+                }
             }
         }
         if let Some(mut bindless) = self.bindless.take() {
@@ -442,11 +446,15 @@ impl Drop for App {
             let device = wsi.device().raw();
             if self.vert_module != vk::ShaderModule::null() {
                 // SAFETY: device is valid, module is valid, GPU is idle.
-                unsafe { device.destroy_shader_module(self.vert_module, None); }
+                unsafe {
+                    device.destroy_shader_module(self.vert_module, None);
+                }
             }
             if self.frag_module != vk::ShaderModule::null() {
                 // SAFETY: device is valid, module is valid, GPU is idle.
-                unsafe { device.destroy_shader_module(self.frag_module, None); }
+                unsafe {
+                    device.destroy_shader_module(self.frag_module, None);
+                }
             }
         }
         // Textures are destroyed via Device's deferred deletion

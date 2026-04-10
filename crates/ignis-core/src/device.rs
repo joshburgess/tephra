@@ -7,7 +7,7 @@ use ash::vk;
 use thiserror::Error;
 
 use crate::context::{Context, ContextConfig, ContextError, QueueType};
-use crate::frame_context::{DeferredDeletion, FrameContextManager, FRAME_OVERLAP};
+use crate::frame_context::{DeferredDeletion, FRAME_OVERLAP, FrameContextManager};
 use crate::linear_alloc::TransientAllocation;
 use crate::resource_manager::{ResourceHandle, ResourceManager, ResourceState};
 use crate::sampler::{SamplerCache, SamplerCreateInfo, StockSampler};
@@ -82,8 +82,7 @@ impl Device {
         )
         .map_err(DeviceError::Vulkan)?;
 
-        let sampler_cache =
-            SamplerCache::new(context.device()).map_err(DeviceError::Vulkan)?;
+        let sampler_cache = SamplerCache::new(context.device()).map_err(DeviceError::Vulkan)?;
 
         Ok(Self {
             context,
@@ -187,7 +186,9 @@ impl Device {
     ) -> Result<TransientAllocation, DeviceError> {
         let device = self.context.device().clone();
         let mut alloc_guard = self.context.allocator().lock();
-        let allocator = alloc_guard.as_mut().ok_or(DeviceError::AllocatorUnavailable)?;
+        let allocator = alloc_guard
+            .as_mut()
+            .ok_or(DeviceError::AllocatorUnavailable)?;
         self.frame_manager
             .current_frame_mut()
             .linear_allocator_pool
@@ -296,7 +297,9 @@ impl Device {
     ///
     /// Returns `None` if no resource manager is attached.
     pub fn resource_state(&self, handle: ResourceHandle) -> Option<ResourceState> {
-        self.resource_manager.as_ref().map(|rm| rm.resource_state(handle))
+        self.resource_manager
+            .as_ref()
+            .map(|rm| rm.resource_state(handle))
     }
 
     /// Set a debug name on a Vulkan object.

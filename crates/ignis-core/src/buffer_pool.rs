@@ -10,8 +10,8 @@
 use std::ptr::NonNull;
 
 use ash::vk;
-use gpu_allocator::vulkan as vma;
 use gpu_allocator::MemoryLocation;
+use gpu_allocator::vulkan as vma;
 
 use crate::device::DeviceError;
 
@@ -186,8 +186,8 @@ impl BufferPool {
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
         // SAFETY: device is valid, buffer_ci is well-formed.
-        let buffer = unsafe { device.create_buffer(&buffer_ci, None) }
-            .map_err(DeviceError::Vulkan)?;
+        let buffer =
+            unsafe { device.create_buffer(&buffer_ci, None) }.map_err(DeviceError::Vulkan)?;
 
         let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
 
@@ -202,10 +202,8 @@ impl BufferPool {
             .map_err(|e| DeviceError::AllocationFailed(e.to_string()))?;
 
         // SAFETY: buffer and allocation are valid.
-        unsafe {
-            device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
-        }
-        .map_err(DeviceError::Vulkan)?;
+        unsafe { device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) }
+            .map_err(DeviceError::Vulkan)?;
 
         let mapped_ptr = allocation
             .mapped_ptr()

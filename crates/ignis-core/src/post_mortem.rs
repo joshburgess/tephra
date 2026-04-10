@@ -160,8 +160,8 @@ impl BreadcrumbBuffer {
             return;
         }
 
-        let offset = self.next_marker as vk::DeviceSize
-            * std::mem::size_of::<u32>() as vk::DeviceSize;
+        let offset =
+            self.next_marker as vk::DeviceSize * std::mem::size_of::<u32>() as vk::DeviceSize;
 
         // SAFETY: device, cmd, and buffer are valid. offset is within bounds.
         unsafe {

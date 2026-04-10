@@ -78,7 +78,9 @@ fn main() {
         usage: vk::BufferUsageFlags::TRANSFER_DST,
         domain: MemoryDomain::CachedHost,
     };
-    let readback_buffer = device.create_buffer(&readback_info).expect("readback buffer");
+    let readback_buffer = device
+        .create_buffer(&readback_info)
+        .expect("readback buffer");
 
     // --- Load shaders ---
     let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.vert.spv"));
@@ -87,8 +89,8 @@ fn main() {
         .expect("vertex shader");
     let frag_shader = Shader::create(device.raw(), vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
         .expect("fragment shader");
-    let mut program = Program::create(device.raw(), &[&vert_shader, &frag_shader])
-        .expect("program");
+    let mut program =
+        Program::create(device.raw(), &[&vert_shader, &frag_shader]).expect("program");
 
     // --- Record commands ---
     device.begin_frame().expect("begin_frame");
@@ -96,11 +98,8 @@ fn main() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -224,7 +223,10 @@ fn main() {
     let g = pixel_data[center_offset + 1];
     let b = pixel_data[center_offset + 2];
     let a = pixel_data[center_offset + 3];
-    println!("Center pixel ({}, {}): RGBA = ({}, {}, {}, {})", center_x, center_y, r, g, b, a);
+    println!(
+        "Center pixel ({}, {}): RGBA = ({}, {}, {}, {})",
+        center_x, center_y, r, g, b, a
+    );
 
     // The triangle should have non-zero color at the center
     let has_color = r > 0 || g > 0 || b > 0;
@@ -248,8 +250,7 @@ fn main() {
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
             let offset = ((y * WIDTH + x) * 4) as usize;
-            if pixel_data[offset] > 0 || pixel_data[offset + 1] > 0 || pixel_data[offset + 2] > 0
-            {
+            if pixel_data[offset] > 0 || pixel_data[offset + 1] > 0 || pixel_data[offset + 2] > 0 {
                 non_black += 1;
             }
         }
@@ -263,7 +264,9 @@ fn main() {
 
     // --- Cleanup ---
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     program.destroy(device.raw());
     let mut vert_shader = vert_shader;
     let mut frag_shader = frag_shader;

@@ -13,7 +13,7 @@ use ignis_descriptors::set_allocator::{
     DescriptorSetAllocator, DescriptorSetLayoutInfo as AllocatorLayoutInfo,
 };
 
-use crate::shader::{ReflectedSetLayout, Shader, MAX_DESCRIPTOR_SETS};
+use crate::shader::{MAX_DESCRIPTOR_SETS, ReflectedSetLayout, Shader};
 
 /// A linked shader program (e.g., vertex + fragment, or compute).
 ///
@@ -133,8 +133,7 @@ impl Program {
             }
         }
 
-        let mut layout_ci =
-            vk::PipelineLayoutCreateInfo::default().set_layouts(&all_layouts);
+        let mut layout_ci = vk::PipelineLayoutCreateInfo::default().set_layouts(&all_layouts);
 
         let pc_range;
         if let Some(ref range) = merged_push_constants {
@@ -230,9 +229,7 @@ impl Program {
         }
     }
 
-    fn merge_descriptor_sets(
-        shaders: &[&Shader],
-    ) -> [ReflectedSetLayout; MAX_DESCRIPTOR_SETS] {
+    fn merge_descriptor_sets(shaders: &[&Shader]) -> [ReflectedSetLayout; MAX_DESCRIPTOR_SETS] {
         let mut merged: [ReflectedSetLayout; MAX_DESCRIPTOR_SETS] =
             std::array::from_fn(|_| ReflectedSetLayout::default());
 

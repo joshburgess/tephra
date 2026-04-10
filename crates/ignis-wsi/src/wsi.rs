@@ -115,15 +115,11 @@ impl WSI {
         let device = Device::new(&context_config)?;
 
         // Create surface
-        let surface = platform.create_surface(
-            device.context().entry(),
-            device.context().instance(),
-        )?;
+        let surface =
+            platform.create_surface(device.context().entry(), device.context().instance())?;
 
-        let surface_loader = ash::khr::surface::Instance::new(
-            device.context().entry(),
-            device.context().instance(),
-        );
+        let surface_loader =
+            ash::khr::surface::Instance::new(device.context().entry(), device.context().instance());
 
         // Verify the graphics queue supports presentation to this surface
         let graphics_family = device.context().queue(QueueType::Graphics).family_index;
@@ -209,16 +205,17 @@ impl WSI {
 
         let acquire_sem = self.acquire_semaphores[self.current_semaphore_index];
 
-        let (image_index, suboptimal) = match self.swapchain.acquire_next_image(acquire_sem, u64::MAX) {
-            Ok((idx, suboptimal)) => (idx, suboptimal),
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain()?;
-                let (idx, suboptimal) =
-                    self.swapchain.acquire_next_image(acquire_sem, u64::MAX)?;
-                (idx, suboptimal)
-            }
-            Err(e) => return Err(WSIError::Vulkan(e)),
-        };
+        let (image_index, suboptimal) =
+            match self.swapchain.acquire_next_image(acquire_sem, u64::MAX) {
+                Ok((idx, suboptimal)) => (idx, suboptimal),
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    self.recreate_swapchain()?;
+                    let (idx, suboptimal) =
+                        self.swapchain.acquire_next_image(acquire_sem, u64::MAX)?;
+                    (idx, suboptimal)
+                }
+                Err(e) => return Err(WSIError::Vulkan(e)),
+            };
 
         self.swapchain_suboptimal = suboptimal;
         self.current_image_index = image_index;
@@ -320,11 +317,15 @@ impl WSI {
             // Destroy old semaphores (GPU is idle from device_wait_idle above)
             for sem in &self.acquire_semaphores {
                 // SAFETY: device is valid, semaphore is valid, GPU is idle.
-                unsafe { self.device.raw().destroy_semaphore(*sem, None); }
+                unsafe {
+                    self.device.raw().destroy_semaphore(*sem, None);
+                }
             }
             for sem in &self.release_semaphores {
                 // SAFETY: device is valid, semaphore is valid, GPU is idle.
-                unsafe { self.device.raw().destroy_semaphore(*sem, None); }
+                unsafe {
+                    self.device.raw().destroy_semaphore(*sem, None);
+                }
             }
 
             let semaphore_ci = vk::SemaphoreCreateInfo::default();
@@ -342,11 +343,7 @@ impl WSI {
         self.current_semaphore_index = 0;
         self.swapchain_suboptimal = false;
 
-        log::debug!(
-            "Swapchain recreated: {}x{}",
-            self.width,
-            self.height
-        );
+        log::debug!("Swapchain recreated: {}x{}", self.width, self.height);
 
         Ok(())
     }

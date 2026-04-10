@@ -67,19 +67,33 @@ impl BackbufferFormat {
                 (vk::Format::R8G8B8A8_SRGB, vk::ColorSpaceKHR::SRGB_NONLINEAR),
             ],
             BackbufferFormat::SrgbUnorm => vec![
-                (vk::Format::B8G8R8A8_UNORM, vk::ColorSpaceKHR::SRGB_NONLINEAR),
-                (vk::Format::R8G8B8A8_UNORM, vk::ColorSpaceKHR::SRGB_NONLINEAR),
+                (
+                    vk::Format::B8G8R8A8_UNORM,
+                    vk::ColorSpaceKHR::SRGB_NONLINEAR,
+                ),
+                (
+                    vk::Format::R8G8B8A8_UNORM,
+                    vk::ColorSpaceKHR::SRGB_NONLINEAR,
+                ),
             ],
             BackbufferFormat::Hdr10 => vec![
-                (vk::Format::A2B10G10R10_UNORM_PACK32, vk::ColorSpaceKHR::HDR10_ST2084_EXT),
-                (vk::Format::A2R10G10B10_UNORM_PACK32, vk::ColorSpaceKHR::HDR10_ST2084_EXT),
+                (
+                    vk::Format::A2B10G10R10_UNORM_PACK32,
+                    vk::ColorSpaceKHR::HDR10_ST2084_EXT,
+                ),
+                (
+                    vk::Format::A2R10G10B10_UNORM_PACK32,
+                    vk::ColorSpaceKHR::HDR10_ST2084_EXT,
+                ),
             ],
-            BackbufferFormat::ScRgb => vec![
-                (vk::Format::R16G16B16A16_SFLOAT, vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT),
-            ],
-            BackbufferFormat::DolbyVision => vec![
-                (vk::Format::R16G16B16A16_SFLOAT, vk::ColorSpaceKHR::DOLBYVISION_EXT),
-            ],
+            BackbufferFormat::ScRgb => vec![(
+                vk::Format::R16G16B16A16_SFLOAT,
+                vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+            )],
+            BackbufferFormat::DolbyVision => vec![(
+                vk::Format::R16G16B16A16_SFLOAT,
+                vk::ColorSpaceKHR::DOLBYVISION_EXT,
+            )],
         }
     }
 
@@ -210,20 +224,18 @@ impl PresentModePriority {
 
     fn preference_order(self) -> Vec<vk::PresentModeKHR> {
         match self {
-            PresentModePriority::LowLatency => vec![
-                vk::PresentModeKHR::MAILBOX,
-                vk::PresentModeKHR::FIFO,
-            ],
+            PresentModePriority::LowLatency => {
+                vec![vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::FIFO]
+            }
             PresentModePriority::LowestLatency => vec![
                 vk::PresentModeKHR::IMMEDIATE,
                 vk::PresentModeKHR::MAILBOX,
                 vk::PresentModeKHR::FIFO,
             ],
             PresentModePriority::PowerSaving => vec![vk::PresentModeKHR::FIFO],
-            PresentModePriority::AdaptiveSync => vec![
-                vk::PresentModeKHR::FIFO_RELAXED,
-                vk::PresentModeKHR::FIFO,
-            ],
+            PresentModePriority::AdaptiveSync => {
+                vec![vk::PresentModeKHR::FIFO_RELAXED, vk::PresentModeKHR::FIFO]
+            }
         }
     }
 }

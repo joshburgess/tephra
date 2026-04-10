@@ -474,6 +474,7 @@ impl<'a> DrawContext<'a> {
     }
 
     /// Set blending state for the first color attachment.
+    #[allow(clippy::too_many_arguments)]
     pub fn set_blend(
         &mut self,
         enable: bool,
@@ -798,7 +799,8 @@ impl<'a> DrawContext<'a> {
         buffers: &[vk::Buffer],
         offsets: &[vk::DeviceSize],
     ) {
-        self.cmd.bind_vertex_buffers(first_binding, buffers, offsets);
+        self.cmd
+            .bind_vertex_buffers(first_binding, buffers, offsets);
     }
 
     /// Bind an index buffer.
@@ -841,6 +843,7 @@ impl<'a> DrawContext<'a> {
     /// Issue an indexed draw call.
     ///
     /// Automatically resolves the pipeline and flushes descriptor sets.
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_indexed(
         &mut self,
         program: &mut Program,
@@ -1072,10 +1075,7 @@ impl<'a> DrawContext<'a> {
     ///
     /// Required for programs created with [`Program::create_with_push_descriptors`].
     /// The loader can be obtained from [`Context::push_descriptor_device()`](ignis_core::context::Context::push_descriptor_device).
-    pub fn set_push_descriptor_device(
-        &mut self,
-        device: &'a ash::khr::push_descriptor::Device,
-    ) {
+    pub fn set_push_descriptor_device(&mut self, device: &'a ash::khr::push_descriptor::Device) {
         self.push_descriptor_device = Some(device);
     }
 

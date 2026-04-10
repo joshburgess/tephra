@@ -41,9 +41,7 @@ impl From<ExternalHandleType> for vk::ExternalSemaphoreHandleTypeFlags {
                 // DMA-BUF is memory-only; fall back to opaque fd for semaphores
                 vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_FD
             }
-            ExternalHandleType::OpaqueWin32 => {
-                vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32
-            }
+            ExternalHandleType::OpaqueWin32 => vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32,
             ExternalHandleType::OpaqueWin32Kmt => {
                 vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32_KMT
             }

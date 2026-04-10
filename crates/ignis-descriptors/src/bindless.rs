@@ -89,8 +89,7 @@ impl BindlessTable {
         }
 
         let mut binding_flags_ci =
-            vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
-                .binding_flags(&active_flags);
+            vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&active_flags);
 
         let layout_ci = vk::DescriptorSetLayoutCreateInfo::default()
             .bindings(&active_bindings)

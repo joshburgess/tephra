@@ -119,24 +119,60 @@ impl PartialEq for BindingSlot {
         match (self, other) {
             (BindingSlot::None, BindingSlot::None) => true,
             (
-                BindingSlot::UniformBuffer { buffer: b1, offset: o1, range: r1 },
-                BindingSlot::UniformBuffer { buffer: b2, offset: o2, range: r2 },
+                BindingSlot::UniformBuffer {
+                    buffer: b1,
+                    offset: o1,
+                    range: r1,
+                },
+                BindingSlot::UniformBuffer {
+                    buffer: b2,
+                    offset: o2,
+                    range: r2,
+                },
             ) => b1 == b2 && o1 == o2 && r1 == r2,
             (
-                BindingSlot::StorageBuffer { buffer: b1, offset: o1, range: r1 },
-                BindingSlot::StorageBuffer { buffer: b2, offset: o2, range: r2 },
+                BindingSlot::StorageBuffer {
+                    buffer: b1,
+                    offset: o1,
+                    range: r1,
+                },
+                BindingSlot::StorageBuffer {
+                    buffer: b2,
+                    offset: o2,
+                    range: r2,
+                },
             ) => b1 == b2 && o1 == o2 && r1 == r2,
             (
-                BindingSlot::CombinedImageSampler { view: v1, sampler: s1, layout: l1 },
-                BindingSlot::CombinedImageSampler { view: v2, sampler: s2, layout: l2 },
+                BindingSlot::CombinedImageSampler {
+                    view: v1,
+                    sampler: s1,
+                    layout: l1,
+                },
+                BindingSlot::CombinedImageSampler {
+                    view: v2,
+                    sampler: s2,
+                    layout: l2,
+                },
             ) => v1 == v2 && s1 == s2 && l1 == l2,
             (
-                BindingSlot::StorageImage { view: v1, layout: l1 },
-                BindingSlot::StorageImage { view: v2, layout: l2 },
+                BindingSlot::StorageImage {
+                    view: v1,
+                    layout: l1,
+                },
+                BindingSlot::StorageImage {
+                    view: v2,
+                    layout: l2,
+                },
             ) => v1 == v2 && l1 == l2,
             (
-                BindingSlot::InputAttachment { view: v1, layout: l1 },
-                BindingSlot::InputAttachment { view: v2, layout: l2 },
+                BindingSlot::InputAttachment {
+                    view: v1,
+                    layout: l1,
+                },
+                BindingSlot::InputAttachment {
+                    view: v2,
+                    layout: l2,
+                },
             ) => v1 == v2 && l1 == l2,
             (
                 BindingSlot::AccelerationStructure { handle: h1 },
@@ -321,11 +357,7 @@ impl BindingTable {
         binding: u32,
         handle: vk::AccelerationStructureKHR,
     ) {
-        self.set_binding(
-            set,
-            binding,
-            BindingSlot::AccelerationStructure { handle },
-        );
+        self.set_binding(set, binding, BindingSlot::AccelerationStructure { handle });
     }
 
     /// Clear all bindings for a given set.

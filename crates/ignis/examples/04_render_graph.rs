@@ -24,8 +24,8 @@ use ignis::graph::{
 use ignis::wsi::platform::WinitPlatform;
 use ignis::wsi::wsi::{WSI, WSIConfig};
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Pass callback that clears to a cycling color based on a shared frame counter.
 struct ClearPass {
@@ -106,22 +106,14 @@ impl App {
 
         log::info!("Compiling render graph...");
         let compiled = graph.bake();
-        log::info!(
-            "Graph compiled: {} steps",
-            compiled.step_count()
-        );
+        log::info!("Graph compiled: {} steps", compiled.step_count());
         for step in 0..compiled.step_count() {
-            log::info!(
-                "  step[{}]: \"{}\"",
-                step,
-                compiled.step_name(step)
-            );
+            log::info!("  step[{}]: \"{}\"", step, compiled.step_name(step));
         }
 
         log::info!("Allocating physical resources...");
-        let physical =
-            PhysicalResources::allocate(wsi.device_mut(), &compiled, extent, format)
-                .expect("failed to allocate physical resources");
+        let physical = PhysicalResources::allocate(wsi.device_mut(), &compiled, extent, format)
+            .expect("failed to allocate physical resources");
 
         self.compiled = Some(compiled);
         self.physical = Some(physical);
@@ -195,12 +187,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -226,7 +213,9 @@ impl Drop for App {
     fn drop(&mut self) {
         if let Some(wsi) = &self.wsi {
             // SAFETY: waiting for GPU idle before destroying resources.
-            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
         }
         if let Some(physical) = self.physical.take() {
             if let Some(wsi) = &mut self.wsi {

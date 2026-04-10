@@ -64,11 +64,8 @@ fn compute_dispatch_with_storage_buffers() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -104,7 +101,9 @@ fn compute_dispatch_with_storage_buffers() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     program.destroy(device.raw());
     let mut shader = shader;
     shader.destroy(device.raw());
@@ -142,8 +141,8 @@ fn multiple_dispatches_reuse_descriptors() {
 
     // Load shader and program
     let spirv = spirv_from_bytes(include_bytes!("../shaders/double.comp.spv"));
-    let shader = Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &spirv)
-        .expect("shader");
+    let shader =
+        Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &spirv).expect("shader");
     let mut program = Program::create(device.raw(), &[&shader]).expect("program");
 
     // Record multiple dispatches with different buffer bindings
@@ -151,11 +150,8 @@ fn multiple_dispatches_reuse_descriptors() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -198,7 +194,9 @@ fn multiple_dispatches_reuse_descriptors() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     program.destroy(device.raw());
     let mut shader = shader;
     shader.destroy(device.raw());

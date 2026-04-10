@@ -6,7 +6,7 @@
 use std::hash::{Hash, Hasher};
 
 use ash::vk::{self, Handle};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rustc_hash::{FxHashMap, FxHasher};
 
 use ignis::command::state::StaticPipelineState;

@@ -65,11 +65,8 @@ fn graphics_pipeline_default_state() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -127,7 +124,9 @@ fn graphics_pipeline_default_state() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     program.destroy(device.raw());
     let mut vert = vert;
     let mut frag = frag;
@@ -163,21 +162,18 @@ fn graphics_pipeline_multiple_state_combos() {
 
     let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.vert.spv"));
     let frag_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.frag.spv"));
-    let vert = Shader::create(device.raw(), vk::ShaderStageFlags::VERTEX, &vert_spirv)
-        .expect("vert");
-    let frag = Shader::create(device.raw(), vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
-        .expect("frag");
+    let vert =
+        Shader::create(device.raw(), vk::ShaderStageFlags::VERTEX, &vert_spirv).expect("vert");
+    let frag =
+        Shader::create(device.raw(), vk::ShaderStageFlags::FRAGMENT, &frag_spirv).expect("frag");
     let mut program = Program::create(device.raw(), &[&vert, &frag]).expect("program");
 
     device.begin_frame().expect("begin_frame");
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -254,7 +250,9 @@ fn graphics_pipeline_multiple_state_combos() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     program.destroy(device.raw());
     let mut vert = vert;
     let mut frag = frag;
@@ -275,8 +273,8 @@ fn compute_pipeline_compilation() {
 
     // Just compile and dispatch — tests the compute pipeline path
     let spirv = spirv_from_bytes(include_bytes!("../shaders/double.comp.spv"));
-    let shader = Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &spirv)
-        .expect("shader");
+    let shader =
+        Shader::create(device.raw(), vk::ShaderStageFlags::COMPUTE, &spirv).expect("shader");
     let mut program = Program::create(device.raw(), &[&shader]).expect("program");
 
     let size = 256u64;
@@ -289,8 +287,8 @@ fn compute_pipeline_compilation() {
     let buf_b = device.create_buffer(&buf_info).expect("buf_b");
 
     if let Some(slice) = buf_a.mapped_slice_mut() {
-        for i in 0..size as usize {
-            slice[i] = (i % 256) as u8;
+        for (i, byte) in slice.iter_mut().enumerate().take(size as usize) {
+            *byte = (i % 256) as u8;
         }
     }
 
@@ -298,11 +296,8 @@ fn compute_pipeline_compilation() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let mut frame_resources = FrameResources::new(vk::PipelineCache::null());
 
@@ -327,7 +322,9 @@ fn compute_pipeline_compilation() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     program.destroy(device.raw());
     let mut shader = shader;
     shader.destroy(device.raw());

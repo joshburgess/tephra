@@ -58,8 +58,8 @@ impl ShaderManager {
         path: &Path,
         stage: vk::ShaderStageFlags,
     ) -> Result<&Shader, ShaderManagerError> {
-        let spirv_bytes = std::fs::read(path)
-            .map_err(|e| ShaderManagerError::Io(path.to_path_buf(), e))?;
+        let spirv_bytes =
+            std::fs::read(path).map_err(|e| ShaderManagerError::Io(path.to_path_buf(), e))?;
 
         if spirv_bytes.len() % 4 != 0 {
             return Err(ShaderManagerError::InvalidSpirv(
@@ -103,16 +103,12 @@ impl ShaderManager {
         device: &ash::Device,
         path: &Path,
     ) -> Result<&Shader, ShaderManagerError> {
-        let stage = self
-            .shaders
-            .get(path)
-            .map(|m| m.stage)
-            .ok_or_else(|| {
-                ShaderManagerError::InvalidSpirv(
-                    path.to_path_buf(),
-                    "shader not previously loaded".into(),
-                )
-            })?;
+        let stage = self.shaders.get(path).map(|m| m.stage).ok_or_else(|| {
+            ShaderManagerError::InvalidSpirv(
+                path.to_path_buf(),
+                "shader not previously loaded".into(),
+            )
+        })?;
         self.load(device, path, stage)
     }
 

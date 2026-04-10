@@ -69,10 +69,7 @@ impl App {
         // Get timestamp period from device properties
         let props = device.context().device_properties();
         self.timestamp_period = props.limits.timestamp_period;
-        println!(
-            "Timestamp period: {} ns/tick",
-            self.timestamp_period
-        );
+        println!("Timestamp period: {} ns/tick", self.timestamp_period);
 
         // Create timestamp query pool (enough for several begin/end pairs)
         self.timestamps = Some(
@@ -83,14 +80,12 @@ impl App {
         let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.vert.spv"));
         let frag_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.frag.spv"));
 
-        let vert_shader =
-            Shader::create(device.raw(), vk::ShaderStageFlags::VERTEX, &vert_spirv)
-                .expect("vertex shader");
-        let frag_shader =
-            Shader::create(device.raw(), vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
-                .expect("fragment shader");
-        let program = Program::create(device.raw(), &[&vert_shader, &frag_shader])
-            .expect("program");
+        let vert_shader = Shader::create(device.raw(), vk::ShaderStageFlags::VERTEX, &vert_spirv)
+            .expect("vertex shader");
+        let frag_shader = Shader::create(device.raw(), vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
+            .expect("fragment shader");
+        let program =
+            Program::create(device.raw(), &[&vert_shader, &frag_shader]).expect("program");
 
         self.vert_shader = Some(vert_shader);
         self.frag_shader = Some(frag_shader);
@@ -193,8 +188,7 @@ impl App {
                 .expect("begin_rendering");
 
             let vertex_layout = VertexInputLayout::default();
-            ctx.draw(program, &vertex_layout, 3, 1, 0, 0)
-                .expect("draw");
+            ctx.draw(program, &vertex_layout, 3, 1, 0, 0).expect("draw");
 
             ctx.end_rendering();
         }
@@ -227,7 +221,11 @@ impl App {
         });
 
         // Timestamp: end of frame
-        timestamps.end(&mut cmd, "full_frame", vk::PipelineStageFlags2::BOTTOM_OF_PIPE);
+        timestamps.end(
+            &mut cmd,
+            "full_frame",
+            vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+        );
 
         if let Err(e) = wsi.end_frame(cmd.raw()) {
             log::warn!("end_frame failed: {e}");
@@ -263,12 +261,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -288,7 +281,9 @@ impl Drop for App {
     fn drop(&mut self) {
         if let Some(wsi) = &self.wsi {
             // SAFETY: waiting for device idle before cleanup.
-            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
         }
         if let Some(mut timestamps) = self.timestamps.take() {
             if let Some(wsi) = &self.wsi {

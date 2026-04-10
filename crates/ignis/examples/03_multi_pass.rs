@@ -126,7 +126,11 @@ impl App {
         let format = wsi.swapchain_format();
         let offscreen = wsi
             .device_mut()
-            .create_image(&ImageCreateInfo::render_target(OFFSCREEN_W, OFFSCREEN_H, format))
+            .create_image(&ImageCreateInfo::render_target(
+                OFFSCREEN_W,
+                OFFSCREEN_H,
+                format,
+            ))
             .expect("offscreen RT");
         self.offscreen_image = Some(offscreen);
 
@@ -356,12 +360,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -380,31 +379,49 @@ impl ApplicationHandler for App {
 impl Drop for App {
     fn drop(&mut self) {
         if let Some(wsi) = &self.wsi {
-            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
         }
         if let Some(mut p) = self.scene_program.take() {
-            if let Some(wsi) = &self.wsi { p.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                p.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut p) = self.post_program.take() {
-            if let Some(wsi) = &self.wsi { p.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                p.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut s) = self.scene_vert.take() {
-            if let Some(wsi) = &self.wsi { s.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                s.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut s) = self.scene_frag.take() {
-            if let Some(wsi) = &self.wsi { s.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                s.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut s) = self.post_vert.take() {
-            if let Some(wsi) = &self.wsi { s.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                s.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut s) = self.post_frag.take() {
-            if let Some(wsi) = &self.wsi { s.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                s.destroy(wsi.device().raw());
+            }
         }
         if let Some(mut r) = self.frame_resources.take() {
-            if let Some(wsi) = &self.wsi { r.destroy(wsi.device().raw()); }
+            if let Some(wsi) = &self.wsi {
+                r.destroy(wsi.device().raw());
+            }
         }
         if let Some(img) = self.offscreen_image.take() {
-            if let Some(wsi) = &mut self.wsi { wsi.device_mut().destroy_image(img); }
+            if let Some(wsi) = &mut self.wsi {
+                wsi.device_mut().destroy_image(img);
+            }
         }
     }
 }

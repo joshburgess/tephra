@@ -63,7 +63,9 @@ fn buffer_create_fill_readback() {
 
     // Cleanup
     // SAFETY: no GPU work in flight.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     device.destroy_buffer(buffer);
 
     assert_no_validation_errors();
@@ -101,11 +103,8 @@ fn image_create_and_transition() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     // UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL
     cmd.image_barrier(&ImageBarrierInfo::undefined_to(
@@ -140,7 +139,9 @@ fn image_create_and_transition() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     device.destroy_image(image);
 
     assert_no_validation_errors();
@@ -185,8 +186,8 @@ fn mipmap_generation() {
     let mut staging = device.create_buffer(&staging_info).expect("staging");
     if let Some(slice) = staging.mapped_slice_mut() {
         // Fill with a gradient pattern
-        for i in 0..data_size as usize {
-            slice[i] = (i % 256) as u8;
+        for (i, byte) in slice.iter_mut().enumerate().take(data_size as usize) {
+            *byte = (i % 256) as u8;
         }
     }
 
@@ -195,11 +196,8 @@ fn mipmap_generation() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let mut cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let mut cmd =
+        CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     // UNDEFINED -> TRANSFER_DST for all mips
     cmd.image_barrier(&ImageBarrierInfo {
@@ -257,7 +255,9 @@ fn mipmap_generation() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     device.destroy_buffer(staging);
     device.destroy_image(image);
 
@@ -281,8 +281,8 @@ fn buffer_copy() {
     };
     let mut src = device.create_buffer(&src_info).expect("src buffer");
     if let Some(slice) = src.mapped_slice_mut() {
-        for i in 0..size as usize {
-            slice[i] = (i % 256) as u8;
+        for (i, byte) in slice.iter_mut().enumerate().take(size as usize) {
+            *byte = (i % 256) as u8;
         }
     }
 
@@ -299,11 +299,7 @@ fn buffer_copy() {
     let raw_cmd = device
         .request_command_buffer_raw(QueueType::Graphics)
         .expect("cmd alloc");
-    let cmd = CommandBuffer::from_raw(
-        raw_cmd,
-        CommandBufferType::Graphics,
-        device.raw().clone(),
-    );
+    let cmd = CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
     let copy_region = vk::BufferCopy {
         src_offset: 0,
@@ -321,9 +317,9 @@ fn buffer_copy() {
 
     // Verify
     let dst_slice = dst.mapped_slice().expect("dst not mapped");
-    for i in 0..size as usize {
+    for (i, byte) in dst_slice.iter().enumerate().take(size as usize) {
         assert_eq!(
-            dst_slice[i],
+            *byte,
             (i % 256) as u8,
             "buffer copy mismatch at byte {i}"
         );
@@ -331,7 +327,9 @@ fn buffer_copy() {
 
     // Cleanup
     // SAFETY: GPU is idle.
-    unsafe { device.raw().device_wait_idle().ok(); }
+    unsafe {
+        device.raw().device_wait_idle().ok();
+    }
     device.destroy_buffer(src);
     device.destroy_buffer(dst);
 

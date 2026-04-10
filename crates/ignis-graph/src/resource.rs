@@ -84,6 +84,7 @@ pub struct BufferInfo {
 }
 
 /// Internal resource declaration in the graph.
+#[allow(dead_code)]
 pub(crate) enum ResourceInfo {
     Attachment(AttachmentInfo),
     Buffer(BufferInfo),

@@ -129,13 +129,13 @@ pub fn format_block_info(format: vk::Format) -> FormatBlockInfo {
         },
 
         // --- Uncompressed 12-byte ---
-        vk::Format::R32G32B32_UINT
-        | vk::Format::R32G32B32_SINT
-        | vk::Format::R32G32B32_SFLOAT => FormatBlockInfo {
-            block_width: 1,
-            block_height: 1,
-            block_size: 12,
-        },
+        vk::Format::R32G32B32_UINT | vk::Format::R32G32B32_SINT | vk::Format::R32G32B32_SFLOAT => {
+            FormatBlockInfo {
+                block_width: 1,
+                block_height: 1,
+                block_size: 12,
+            }
+        }
 
         // --- Uncompressed 16-byte ---
         vk::Format::R32G32B32A32_UINT
@@ -236,48 +236,36 @@ pub fn format_block_info(format: vk::Format) -> FormatBlockInfo {
             block_height: 8,
             block_size: 16,
         },
-        vk::Format::ASTC_10X5_UNORM_BLOCK | vk::Format::ASTC_10X5_SRGB_BLOCK => {
-            FormatBlockInfo {
-                block_width: 10,
-                block_height: 5,
-                block_size: 16,
-            }
-        }
-        vk::Format::ASTC_10X6_UNORM_BLOCK | vk::Format::ASTC_10X6_SRGB_BLOCK => {
-            FormatBlockInfo {
-                block_width: 10,
-                block_height: 6,
-                block_size: 16,
-            }
-        }
-        vk::Format::ASTC_10X8_UNORM_BLOCK | vk::Format::ASTC_10X8_SRGB_BLOCK => {
-            FormatBlockInfo {
-                block_width: 10,
-                block_height: 8,
-                block_size: 16,
-            }
-        }
-        vk::Format::ASTC_10X10_UNORM_BLOCK | vk::Format::ASTC_10X10_SRGB_BLOCK => {
-            FormatBlockInfo {
-                block_width: 10,
-                block_height: 10,
-                block_size: 16,
-            }
-        }
-        vk::Format::ASTC_12X10_UNORM_BLOCK | vk::Format::ASTC_12X10_SRGB_BLOCK => {
-            FormatBlockInfo {
-                block_width: 12,
-                block_height: 10,
-                block_size: 16,
-            }
-        }
-        vk::Format::ASTC_12X12_UNORM_BLOCK | vk::Format::ASTC_12X12_SRGB_BLOCK => {
-            FormatBlockInfo {
-                block_width: 12,
-                block_height: 12,
-                block_size: 16,
-            }
-        }
+        vk::Format::ASTC_10X5_UNORM_BLOCK | vk::Format::ASTC_10X5_SRGB_BLOCK => FormatBlockInfo {
+            block_width: 10,
+            block_height: 5,
+            block_size: 16,
+        },
+        vk::Format::ASTC_10X6_UNORM_BLOCK | vk::Format::ASTC_10X6_SRGB_BLOCK => FormatBlockInfo {
+            block_width: 10,
+            block_height: 6,
+            block_size: 16,
+        },
+        vk::Format::ASTC_10X8_UNORM_BLOCK | vk::Format::ASTC_10X8_SRGB_BLOCK => FormatBlockInfo {
+            block_width: 10,
+            block_height: 8,
+            block_size: 16,
+        },
+        vk::Format::ASTC_10X10_UNORM_BLOCK | vk::Format::ASTC_10X10_SRGB_BLOCK => FormatBlockInfo {
+            block_width: 10,
+            block_height: 10,
+            block_size: 16,
+        },
+        vk::Format::ASTC_12X10_UNORM_BLOCK | vk::Format::ASTC_12X10_SRGB_BLOCK => FormatBlockInfo {
+            block_width: 12,
+            block_height: 10,
+            block_size: 16,
+        },
+        vk::Format::ASTC_12X12_UNORM_BLOCK | vk::Format::ASTC_12X12_SRGB_BLOCK => FormatBlockInfo {
+            block_width: 12,
+            block_height: 12,
+            block_size: 16,
+        },
 
         // Unknown / unsupported — assume 1x1, 4 bytes
         _ => FormatBlockInfo {

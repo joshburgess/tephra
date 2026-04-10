@@ -65,14 +65,11 @@ impl App {
         let vert_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.vert.spv"));
         let frag_spirv = spirv_from_bytes(include_bytes!("../shaders/triangle.frag.spv"));
 
-        let vert_shader =
-            Shader::create(device, vk::ShaderStageFlags::VERTEX, &vert_spirv)
-                .expect("vertex shader");
-        let frag_shader =
-            Shader::create(device, vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
-                .expect("fragment shader");
-        let program = Program::create(device, &[&vert_shader, &frag_shader])
-            .expect("program");
+        let vert_shader = Shader::create(device, vk::ShaderStageFlags::VERTEX, &vert_spirv)
+            .expect("vertex shader");
+        let frag_shader = Shader::create(device, vk::ShaderStageFlags::FRAGMENT, &frag_spirv)
+            .expect("fragment shader");
+        let program = Program::create(device, &[&vert_shader, &frag_shader]).expect("program");
 
         self.vert_shader = Some(vert_shader);
         self.frag_shader = Some(frag_shader);
@@ -145,21 +142,27 @@ impl App {
 
             // Draw in left half
             let half_w = extent.width as f32 * 0.5;
-            ctx.cmd().set_viewport(0, &[vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: half_w,
-                height: extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }]);
-            ctx.cmd().set_scissor(0, &[vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: half_w as u32,
-                    height: extent.height,
-                },
-            }]);
+            ctx.cmd().set_viewport(
+                0,
+                &[vk::Viewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: half_w,
+                    height: extent.height as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+            ctx.cmd().set_scissor(
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent: vk::Extent2D {
+                        width: half_w as u32,
+                        height: extent.height,
+                    },
+                }],
+            );
 
             ctx.draw(program, &vertex_layout, 3, 1, 0, 0)
                 .expect("draw 1: opaque");
@@ -179,21 +182,30 @@ impl App {
 
             // Draw in center (overlapping both halves)
             let quarter_w = extent.width as f32 * 0.25;
-            ctx.cmd().set_viewport(0, &[vk::Viewport {
-                x: quarter_w,
-                y: 0.0,
-                width: half_w,
-                height: extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }]);
-            ctx.cmd().set_scissor(0, &[vk::Rect2D {
-                offset: vk::Offset2D { x: quarter_w as i32, y: 0 },
-                extent: vk::Extent2D {
-                    width: half_w as u32,
-                    height: extent.height,
-                },
-            }]);
+            ctx.cmd().set_viewport(
+                0,
+                &[vk::Viewport {
+                    x: quarter_w,
+                    y: 0.0,
+                    width: half_w,
+                    height: extent.height as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+            ctx.cmd().set_scissor(
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D {
+                        x: quarter_w as i32,
+                        y: 0,
+                    },
+                    extent: vk::Extent2D {
+                        width: half_w as u32,
+                        height: extent.height,
+                    },
+                }],
+            );
 
             ctx.draw(program, &vertex_layout, 3, 1, 0, 0)
                 .expect("draw 2: transparent overlay");
@@ -207,28 +219,39 @@ impl App {
             // ============================================================
             ctx.restore_state(&saved);
 
-            ctx.cmd().set_viewport(0, &[vk::Viewport {
-                x: half_w,
-                y: 0.0,
-                width: half_w,
-                height: extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }]);
-            ctx.cmd().set_scissor(0, &[vk::Rect2D {
-                offset: vk::Offset2D { x: half_w as i32, y: 0 },
-                extent: vk::Extent2D {
-                    width: half_w as u32,
-                    height: extent.height,
-                },
-            }]);
+            ctx.cmd().set_viewport(
+                0,
+                &[vk::Viewport {
+                    x: half_w,
+                    y: 0.0,
+                    width: half_w,
+                    height: extent.height as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+            ctx.cmd().set_scissor(
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D {
+                        x: half_w as i32,
+                        y: 0,
+                    },
+                    extent: vk::Extent2D {
+                        width: half_w as u32,
+                        height: extent.height,
+                    },
+                }],
+            );
 
             ctx.draw(program, &vertex_layout, 3, 1, 0, 0)
                 .expect("draw 3: restored opaque");
 
             if self.frame == 0 {
                 println!("Step 3: Restored state, drew opaque triangle (right half)");
-                println!("\nYou should see: two opaque triangles (left/right) with a transparent overlay (center)");
+                println!(
+                    "\nYou should see: two opaque triangles (left/right) with a transparent overlay (center)"
+                );
             }
 
             ctx.end_rendering();
@@ -288,12 +311,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -313,7 +331,9 @@ impl Drop for App {
     fn drop(&mut self) {
         if let Some(wsi) = &self.wsi {
             // SAFETY: waiting for device idle before cleanup.
-            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+            unsafe {
+                wsi.device().raw().device_wait_idle().ok();
+            }
         }
         if let Some(mut fr) = self.frame_resources.take() {
             if let Some(wsi) = &self.wsi {

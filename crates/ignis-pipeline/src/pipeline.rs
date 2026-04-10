@@ -149,14 +149,8 @@ impl PipelineCompiler {
             return Ok(pipeline);
         }
 
-        let pipeline = self.compile_graphics(
-            device,
-            program,
-            state,
-            render_pass,
-            subpass,
-            vertex_layout,
-        )?;
+        let pipeline =
+            self.compile_graphics(device, program, state, render_pass, subpass, vertex_layout)?;
 
         log::debug!(
             "Compiled graphics pipeline (total cached: {})",
@@ -417,10 +411,9 @@ pub(crate) fn build_graphics_pipeline(
         .viewport_count(1)
         .scissor_count(1);
 
-    let mut conservative_raster_ci = vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
-        .conservative_rasterization_mode(
-            vk::ConservativeRasterizationModeEXT::OVERESTIMATE,
-        );
+    let mut conservative_raster_ci =
+        vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
+            .conservative_rasterization_mode(vk::ConservativeRasterizationModeEXT::OVERESTIMATE);
 
     let mut rasterization_ci = vk::PipelineRasterizationStateCreateInfo::default()
         .depth_clamp_enable(false)
@@ -552,10 +545,9 @@ pub(crate) fn build_graphics_pipeline(
     }
 
     // SAFETY: device is valid, all pipeline create info is well-formed.
-    let pipelines = unsafe {
-        device.create_graphics_pipelines(pipeline_cache, &[pipeline_ci], None)
-    }
-    .map_err(|(_, err)| err)?;
+    let pipelines =
+        unsafe { device.create_graphics_pipelines(pipeline_cache, &[pipeline_ci], None) }
+            .map_err(|(_, err)| err)?;
 
     Ok(pipelines[0])
 }
@@ -614,10 +606,9 @@ pub(crate) fn build_dynamic_graphics_pipeline(
         .viewport_count(1)
         .scissor_count(1);
 
-    let mut conservative_raster_ci = vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
-        .conservative_rasterization_mode(
-            vk::ConservativeRasterizationModeEXT::OVERESTIMATE,
-        );
+    let mut conservative_raster_ci =
+        vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
+            .conservative_rasterization_mode(vk::ConservativeRasterizationModeEXT::OVERESTIMATE);
 
     let mut rasterization_ci = vk::PipelineRasterizationStateCreateInfo::default()
         .depth_clamp_enable(false)
@@ -756,10 +747,9 @@ pub(crate) fn build_dynamic_graphics_pipeline(
     }
 
     // SAFETY: device is valid, all pipeline create info is well-formed.
-    let pipelines = unsafe {
-        device.create_graphics_pipelines(pipeline_cache, &[pipeline_ci], None)
-    }
-    .map_err(|(_, err)| err)?;
+    let pipelines =
+        unsafe { device.create_graphics_pipelines(pipeline_cache, &[pipeline_ci], None) }
+            .map_err(|(_, err)| err)?;
 
     Ok(pipelines[0])
 }
@@ -833,10 +823,9 @@ pub(crate) fn build_compute_pipeline_with_state(
         .layout(pipeline_layout);
 
     // SAFETY: device is valid, pipeline create info is well-formed.
-    let pipelines = unsafe {
-        device.create_compute_pipelines(pipeline_cache, &[pipeline_ci], None)
-    }
-    .map_err(|(_, err)| err)?;
+    let pipelines =
+        unsafe { device.create_compute_pipelines(pipeline_cache, &[pipeline_ci], None) }
+            .map_err(|(_, err)| err)?;
 
     Ok(pipelines[0])
 }

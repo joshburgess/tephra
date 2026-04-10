@@ -76,11 +76,7 @@ pub struct PassBuilder<'a> {
 
 impl PassBuilder<'_> {
     /// Declare a color output attachment created by this pass.
-    pub fn add_color_output(
-        &mut self,
-        name: &str,
-        info: AttachmentInfo,
-    ) -> ResourceHandle {
+    pub fn add_color_output(&mut self, name: &str, info: AttachmentInfo) -> ResourceHandle {
         let handle = self.create_resource(name, ResourceInfo::Attachment(info));
         self.add_access(handle, AccessType::ColorOutput);
         handle
@@ -92,11 +88,7 @@ impl PassBuilder<'_> {
     }
 
     /// Declare a depth/stencil output attachment created by this pass.
-    pub fn add_depth_stencil_output(
-        &mut self,
-        name: &str,
-        info: AttachmentInfo,
-    ) -> ResourceHandle {
+    pub fn add_depth_stencil_output(&mut self, name: &str, info: AttachmentInfo) -> ResourceHandle {
         let handle = self.create_resource(name, ResourceInfo::Attachment(info));
         self.add_access(handle, AccessType::DepthStencilOutput);
         handle
@@ -113,11 +105,7 @@ impl PassBuilder<'_> {
     }
 
     /// Declare a storage buffer/image output created by this pass.
-    pub fn add_storage_output(
-        &mut self,
-        name: &str,
-        info: BufferInfo,
-    ) -> ResourceHandle {
+    pub fn add_storage_output(&mut self, name: &str, info: BufferInfo) -> ResourceHandle {
         let handle = self.create_resource(name, ResourceInfo::Buffer(info));
         self.add_access(handle, AccessType::StorageWrite);
         handle

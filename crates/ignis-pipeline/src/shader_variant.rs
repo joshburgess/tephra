@@ -257,8 +257,7 @@ impl ShaderVariantRegistry {
 
     /// Remove all compiled variants for a template (e.g., after source change).
     pub fn invalidate_template(&mut self, template: ShaderTemplateId) {
-        self.compiled_variants
-            .retain(|k, _| k.template != template);
+        self.compiled_variants.retain(|k, _| k.template != template);
     }
 
     /// Remove all compiled variants.
@@ -328,11 +327,8 @@ mod tests {
     fn variant_registry() {
         let mut reg = ShaderVariantRegistry::new();
 
-        let template = ShaderTemplate::new(
-            "test.frag.glsl",
-            ash::vk::ShaderStageFlags::FRAGMENT,
-        )
-        .define_bool("USE_ALPHA");
+        let template = ShaderTemplate::new("test.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT)
+            .define_bool("USE_ALPHA");
 
         let id = reg.register_template(template);
         assert_eq!(reg.template_count(), 1);

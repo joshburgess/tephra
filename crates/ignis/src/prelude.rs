@@ -28,4 +28,4 @@ pub use ignis_pipeline::shader::Shader;
 
 // WSI types
 pub use ignis_wsi::platform::WinitPlatform;
-pub use ignis_wsi::wsi::{WSIConfig, WSI};
+pub use ignis_wsi::wsi::{WSI, WSIConfig};

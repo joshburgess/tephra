@@ -5,7 +5,7 @@
 
 use std::hash::{Hash, Hasher};
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rustc_hash::FxHasher;
 
 use ignis::command::state::StaticPipelineState;
@@ -27,9 +27,7 @@ fn bench_state_hashing(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("state_hashing");
 
-    group.bench_function("fx_hasher", |b| {
-        b.iter(|| hash_with_fx(black_box(&state)))
-    });
+    group.bench_function("fx_hasher", |b| b.iter(|| hash_with_fx(black_box(&state))));
 
     group.bench_function("default_hasher", |b| {
         b.iter(|| hash_with_default(black_box(&state)))
@@ -41,9 +39,7 @@ fn bench_state_hashing(c: &mut Criterion) {
 fn bench_state_clone(c: &mut Criterion) {
     let state = StaticPipelineState::default();
 
-    c.bench_function("state_clone", |b| {
-        b.iter(|| black_box(&state).clone())
-    });
+    c.bench_function("state_clone", |b| b.iter(|| black_box(&state).clone()));
 }
 
 fn bench_state_equality(c: &mut Criterion) {
@@ -55,5 +51,10 @@ fn bench_state_equality(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_state_hashing, bench_state_clone, bench_state_equality);
+criterion_group!(
+    benches,
+    bench_state_hashing,
+    bench_state_clone,
+    bench_state_equality
+);
 criterion_main!(benches);
