@@ -98,6 +98,15 @@ pub struct StaticPipelineState {
     pub sample_shading: bool,
     /// Rasterization sample count.
     pub rasterization_samples: vk::SampleCountFlags,
+    /// Whether conservative rasterization is enabled.
+    ///
+    /// Requires `VK_EXT_conservative_rasterization`.
+    pub conservative_rasterization: bool,
+    /// Required subgroup size (log2) for compute/mesh shader stages.
+    ///
+    /// 0 means no requirement (use driver default).
+    /// Otherwise, the required subgroup size is `1 << subgroup_size_log2`.
+    pub subgroup_size_log2: u8,
     /// Specialization constant bitmask — which of the 8 slots are active.
     pub spec_constant_mask: u32,
     /// Up to 8 specialization constant values (reinterpreted as float/int/bool).
@@ -131,6 +140,8 @@ impl Default for StaticPipelineState {
             alpha_to_one: false,
             sample_shading: false,
             rasterization_samples: vk::SampleCountFlags::TYPE_1,
+            conservative_rasterization: false,
+            subgroup_size_log2: 0,
             spec_constant_mask: 0,
             spec_constants: [0; 8],
         }

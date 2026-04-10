@@ -108,6 +108,7 @@ pub struct Context {
     allocator: Mutex<Option<vma::Allocator>>,
     device_properties: vk::PhysicalDeviceProperties,
     device_features: DeviceFeatures,
+    quirks: crate::quirks::ImplementationQuirks,
     debug_utils: Option<ash::ext::debug_utils::Instance>,
     debug_utils_device: Option<ash::ext::debug_utils::Device>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
@@ -473,6 +474,7 @@ impl Context {
             compute_queue,
             transfer_queue,
             allocator: Mutex::new(Some(allocator)),
+            quirks: crate::quirks::ImplementationQuirks::detect(&device_properties),
             device_properties,
             device_features,
             debug_utils,
@@ -622,6 +624,11 @@ impl Context {
     /// Summary of enabled device features.
     pub fn device_features(&self) -> &DeviceFeatures {
         &self.device_features
+    }
+
+    /// Detected driver quirks and workarounds.
+    pub fn quirks(&self) -> &crate::quirks::ImplementationQuirks {
+        &self.quirks
     }
 
     /// The debug utils device extension loader, if available.

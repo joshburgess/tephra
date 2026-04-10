@@ -341,15 +341,10 @@ pub(crate) fn build_graphics_pipeline(
 ) -> Result<vk::Pipeline, vk::Result> {
     let entry_name = c"main";
 
-    let stage_cis: Vec<vk::PipelineShaderStageCreateInfo<'_>> = shaders
+    // Detect mesh shader pipeline — no vertex input or input assembly state
+    let is_mesh_pipeline = shaders
         .iter()
-        .map(|(module, stage)| {
-            vk::PipelineShaderStageCreateInfo::default()
-                .stage(*stage)
-                .module(*module)
-                .name(entry_name)
-        })
-        .collect();
+        .any(|(_, stage)| *stage == vk::ShaderStageFlags::MESH_EXT);
 
     let binding_descs: Vec<vk::VertexInputBindingDescription> = vertex_layout
         .bindings
@@ -386,7 +381,12 @@ pub(crate) fn build_graphics_pipeline(
         .viewport_count(1)
         .scissor_count(1);
 
-    let rasterization_ci = vk::PipelineRasterizationStateCreateInfo::default()
+    let mut conservative_raster_ci = vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
+        .conservative_rasterization_mode(
+            vk::ConservativeRasterizationModeEXT::OVERESTIMATE,
+        );
+
+    let mut rasterization_ci = vk::PipelineRasterizationStateCreateInfo::default()
         .depth_clamp_enable(false)
         .rasterizer_discard_enable(false)
         .polygon_mode(state.polygon_mode)
@@ -394,6 +394,10 @@ pub(crate) fn build_graphics_pipeline(
         .front_face(state.front_face)
         .depth_bias_enable(state.depth_bias_enable)
         .line_width(1.0);
+
+    if state.conservative_rasterization {
+        rasterization_ci = rasterization_ci.push_next(&mut conservative_raster_ci);
+    }
 
     let multisample_ci = vk::PipelineMultisampleStateCreateInfo::default()
         .rasterization_samples(state.rasterization_samples)
@@ -459,26 +463,42 @@ pub(crate) fn build_graphics_pipeline(
         None
     };
 
-    // Re-build stage_cis with specialization info attached
-    let stage_cis: Vec<vk::PipelineShaderStageCreateInfo<'_>> = if let Some(ref spec) = spec_info {
-        shaders
-            .iter()
-            .map(|(module, stage)| {
-                vk::PipelineShaderStageCreateInfo::default()
-                    .stage(*stage)
-                    .module(*module)
-                    .name(entry_name)
-                    .specialization_info(spec)
-            })
-            .collect()
-    } else {
-        stage_cis
-    };
+    // Build required subgroup size info if set
+    let mut subgroup_size_ci = vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default();
+    if state.subgroup_size_log2 > 0 {
+        subgroup_size_ci.required_subgroup_size = 1u32 << state.subgroup_size_log2;
+    }
 
-    let pipeline_ci = vk::GraphicsPipelineCreateInfo::default()
-        .stages(&stage_cis)
-        .vertex_input_state(&vertex_input_ci)
-        .input_assembly_state(&input_assembly_ci)
+    // Build stage_cis with specialization info and subgroup size attached
+    let mut stage_cis_owned: Vec<vk::PipelineShaderStageCreateInfo<'_>> = shaders
+        .iter()
+        .map(|(module, stage)| {
+            let mut ci = vk::PipelineShaderStageCreateInfo::default()
+                .stage(*stage)
+                .module(*module)
+                .name(entry_name);
+            if let Some(ref spec) = spec_info {
+                ci = ci.specialization_info(spec);
+            }
+            ci
+        })
+        .collect();
+
+    // Chain subgroup size requirement on compute/mesh/task stages
+    if state.subgroup_size_log2 > 0 {
+        for ci in &mut stage_cis_owned {
+            if ci.stage == vk::ShaderStageFlags::COMPUTE
+                || ci.stage == vk::ShaderStageFlags::MESH_EXT
+                || ci.stage == vk::ShaderStageFlags::TASK_EXT
+            {
+                ci.p_next = &subgroup_size_ci as *const _ as *const std::ffi::c_void;
+            }
+        }
+    }
+
+    // Mesh shader pipelines must not have vertex input or input assembly state
+    let mut pipeline_ci = vk::GraphicsPipelineCreateInfo::default()
+        .stages(&stage_cis_owned)
         .viewport_state(&viewport_ci)
         .rasterization_state(&rasterization_ci)
         .multisample_state(&multisample_ci)
@@ -488,6 +508,12 @@ pub(crate) fn build_graphics_pipeline(
         .layout(pipeline_layout)
         .render_pass(render_pass)
         .subpass(subpass);
+
+    if !is_mesh_pipeline {
+        pipeline_ci = pipeline_ci
+            .vertex_input_state(&vertex_input_ci)
+            .input_assembly_state(&input_assembly_ci);
+    }
 
     // SAFETY: device is valid, all pipeline create info is well-formed.
     let pipelines = unsafe {
@@ -512,15 +538,10 @@ pub(crate) fn build_dynamic_graphics_pipeline(
 ) -> Result<vk::Pipeline, vk::Result> {
     let entry_name = c"main";
 
-    let stage_cis: Vec<vk::PipelineShaderStageCreateInfo<'_>> = shaders
+    // Detect mesh shader pipeline — no vertex input or input assembly state
+    let is_mesh_pipeline = shaders
         .iter()
-        .map(|(module, stage)| {
-            vk::PipelineShaderStageCreateInfo::default()
-                .stage(*stage)
-                .module(*module)
-                .name(entry_name)
-        })
-        .collect();
+        .any(|(_, stage)| *stage == vk::ShaderStageFlags::MESH_EXT);
 
     let binding_descs: Vec<vk::VertexInputBindingDescription> = vertex_layout
         .bindings
@@ -557,7 +578,12 @@ pub(crate) fn build_dynamic_graphics_pipeline(
         .viewport_count(1)
         .scissor_count(1);
 
-    let rasterization_ci = vk::PipelineRasterizationStateCreateInfo::default()
+    let mut conservative_raster_ci = vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
+        .conservative_rasterization_mode(
+            vk::ConservativeRasterizationModeEXT::OVERESTIMATE,
+        );
+
+    let mut rasterization_ci = vk::PipelineRasterizationStateCreateInfo::default()
         .depth_clamp_enable(false)
         .rasterizer_discard_enable(false)
         .polygon_mode(state.polygon_mode)
@@ -565,6 +591,10 @@ pub(crate) fn build_dynamic_graphics_pipeline(
         .front_face(state.front_face)
         .depth_bias_enable(state.depth_bias_enable)
         .line_width(1.0);
+
+    if state.conservative_rasterization {
+        rasterization_ci = rasterization_ci.push_next(&mut conservative_raster_ci);
+    }
 
     let multisample_ci = vk::PipelineMultisampleStateCreateInfo::default()
         .rasterization_samples(state.rasterization_samples)
@@ -631,32 +661,48 @@ pub(crate) fn build_dynamic_graphics_pipeline(
         None
     };
 
-    // Re-build stage_cis with specialization info attached
-    let stage_cis: Vec<vk::PipelineShaderStageCreateInfo<'_>> = if let Some(ref spec) = spec_info {
-        shaders
-            .iter()
-            .map(|(module, stage)| {
-                vk::PipelineShaderStageCreateInfo::default()
-                    .stage(*stage)
-                    .module(*module)
-                    .name(entry_name)
-                    .specialization_info(spec)
-            })
-            .collect()
-    } else {
-        stage_cis
-    };
+    // Build required subgroup size info if set
+    let mut subgroup_size_ci = vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default();
+    if state.subgroup_size_log2 > 0 {
+        subgroup_size_ci.required_subgroup_size = 1u32 << state.subgroup_size_log2;
+    }
+
+    // Build stage_cis with specialization info and subgroup size attached
+    let mut stage_cis_owned: Vec<vk::PipelineShaderStageCreateInfo<'_>> = shaders
+        .iter()
+        .map(|(module, stage)| {
+            let mut ci = vk::PipelineShaderStageCreateInfo::default()
+                .stage(*stage)
+                .module(*module)
+                .name(entry_name);
+            if let Some(ref spec) = spec_info {
+                ci = ci.specialization_info(spec);
+            }
+            ci
+        })
+        .collect();
+
+    // Chain subgroup size requirement on compute/mesh/task stages
+    if state.subgroup_size_log2 > 0 {
+        for ci in &mut stage_cis_owned {
+            if ci.stage == vk::ShaderStageFlags::COMPUTE
+                || ci.stage == vk::ShaderStageFlags::MESH_EXT
+                || ci.stage == vk::ShaderStageFlags::TASK_EXT
+            {
+                ci.p_next = &subgroup_size_ci as *const _ as *const std::ffi::c_void;
+            }
+        }
+    }
 
     let mut rendering_ci = vk::PipelineRenderingCreateInfo::default()
         .color_attachment_formats(color_formats)
         .depth_attachment_format(depth_format)
         .stencil_attachment_format(stencil_format);
 
-    let pipeline_ci = vk::GraphicsPipelineCreateInfo::default()
+    // Mesh shader pipelines must not have vertex input or input assembly state
+    let mut pipeline_ci = vk::GraphicsPipelineCreateInfo::default()
         .push_next(&mut rendering_ci)
-        .stages(&stage_cis)
-        .vertex_input_state(&vertex_input_ci)
-        .input_assembly_state(&input_assembly_ci)
+        .stages(&stage_cis_owned)
         .viewport_state(&viewport_ci)
         .rasterization_state(&rasterization_ci)
         .multisample_state(&multisample_ci)
@@ -666,6 +712,12 @@ pub(crate) fn build_dynamic_graphics_pipeline(
         .layout(pipeline_layout)
         .render_pass(vk::RenderPass::null())
         .subpass(0);
+
+    if !is_mesh_pipeline {
+        pipeline_ci = pipeline_ci
+            .vertex_input_state(&vertex_input_ci)
+            .input_assembly_state(&input_assembly_ci);
+    }
 
     // SAFETY: device is valid, all pipeline create info is well-formed.
     let pipelines = unsafe {
@@ -682,11 +734,63 @@ pub(crate) fn build_compute_pipeline(
     module: vk::ShaderModule,
     pipeline_layout: vk::PipelineLayout,
 ) -> Result<vk::Pipeline, vk::Result> {
+    build_compute_pipeline_with_state(
+        device,
+        pipeline_cache,
+        module,
+        pipeline_layout,
+        &StaticPipelineState::default(),
+    )
+}
+
+/// Build a compute pipeline with specialization constants and subgroup size control.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_compute_pipeline_with_state(
+    device: &ash::Device,
+    pipeline_cache: vk::PipelineCache,
+    module: vk::ShaderModule,
+    pipeline_layout: vk::PipelineLayout,
+    state: &StaticPipelineState,
+) -> Result<vk::Pipeline, vk::Result> {
     let entry_name = c"main";
-    let stage_ci = vk::PipelineShaderStageCreateInfo::default()
+
+    // Build specialization info if any constants are active
+    let spec_map_entries: Vec<vk::SpecializationMapEntry> = (0..8u32)
+        .filter(|i| state.spec_constant_mask & (1 << i) != 0)
+        .map(|i| vk::SpecializationMapEntry {
+            constant_id: i,
+            offset: i * 4,
+            size: 4,
+        })
+        .collect();
+
+    let spec_info = if !spec_map_entries.is_empty() {
+        Some(
+            vk::SpecializationInfo::default()
+                .map_entries(&spec_map_entries)
+                .data(bytemuck::cast_slice(&state.spec_constants)),
+        )
+    } else {
+        None
+    };
+
+    let mut subgroup_size_ci = vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default();
+    if state.subgroup_size_log2 > 0 {
+        subgroup_size_ci.required_subgroup_size = 1u32 << state.subgroup_size_log2;
+    }
+
+    let mut stage_ci = vk::PipelineShaderStageCreateInfo::default()
         .stage(vk::ShaderStageFlags::COMPUTE)
         .module(module)
         .name(entry_name);
+
+    if let Some(ref spec) = spec_info {
+        stage_ci = stage_ci.specialization_info(spec);
+    }
+
+    if state.subgroup_size_log2 > 0 {
+        stage_ci.p_next = &subgroup_size_ci as *const _ as *const std::ffi::c_void;
+    }
 
     let pipeline_ci = vk::ComputePipelineCreateInfo::default()
         .stage(stage_ci)

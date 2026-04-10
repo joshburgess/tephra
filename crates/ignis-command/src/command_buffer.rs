@@ -29,6 +29,9 @@ pub struct CommandBuffer {
     pub(crate) cb_type: CommandBufferType,
     pub(crate) device: ash::Device,
     pub(crate) debug_utils: Option<ash::ext::debug_utils::Device>,
+    pub(crate) mesh_shader: Option<ash::ext::mesh_shader::Device>,
+    pub(crate) acceleration_structure: Option<ash::khr::acceleration_structure::Device>,
+    pub(crate) device_generated_commands: Option<ash::nv::device_generated_commands::Device>,
 }
 
 impl CommandBuffer {
@@ -46,24 +49,37 @@ impl CommandBuffer {
             cb_type,
             device,
             debug_utils: None,
+            mesh_shader: None,
+            acceleration_structure: None,
+            device_generated_commands: None,
         }
     }
 
-    /// Create a `CommandBuffer` wrapper with debug utils support.
+    /// Create a `CommandBuffer` wrapper with extension loaders.
     ///
-    /// When `debug_utils` is `Some`, debug label methods will record labels
-    /// visible in tools like RenderDoc and Nsight.
-    pub fn from_raw_with_debug(
+    /// Optional extension loaders enable additional command recording:
+    /// - `debug_utils`: debug label methods visible in RenderDoc/Nsight
+    /// - `mesh_shader`: mesh shader draw commands
+    /// - `acceleration_structure`: RT acceleration structure build/copy commands
+    /// - `device_generated_commands`: GPU-driven command generation (NVIDIA)
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_raw_with_extensions(
         raw: vk::CommandBuffer,
         cb_type: CommandBufferType,
         device: ash::Device,
         debug_utils: Option<ash::ext::debug_utils::Device>,
+        mesh_shader: Option<ash::ext::mesh_shader::Device>,
+        acceleration_structure: Option<ash::khr::acceleration_structure::Device>,
+        device_generated_commands: Option<ash::nv::device_generated_commands::Device>,
     ) -> Self {
         Self {
             raw,
             cb_type,
             device,
             debug_utils,
+            mesh_shader,
+            acceleration_structure,
+            device_generated_commands,
         }
     }
 
@@ -856,6 +872,216 @@ impl CommandBuffer {
         }
     }
 
+    // ---- Event commands (split barriers) ----
+
+    /// Set an event with pipeline stage and memory dependency info.
+    ///
+    /// Used with [`wait_events2`](Self::wait_events2) for split barriers.
+    /// Requires `VK_KHR_synchronization2` or Vulkan 1.3.
+    pub fn set_event2(&mut self, event: vk::Event, dependency_info: &vk::DependencyInfo<'_>) {
+        // SAFETY: command buffer and event are valid.
+        unsafe {
+            self.device.cmd_set_event2(self.raw, event, dependency_info);
+        }
+    }
+
+    /// Wait on one or more events with dependency info.
+    ///
+    /// Pairs with [`set_event2`](Self::set_event2) for split barriers.
+    pub fn wait_events2(
+        &mut self,
+        events: &[vk::Event],
+        dependency_infos: &[vk::DependencyInfo<'_>],
+    ) {
+        // SAFETY: command buffer, events, and dependency infos are valid.
+        unsafe {
+            self.device
+                .cmd_wait_events2(self.raw, events, dependency_infos);
+        }
+    }
+
+    /// Reset an event from the command buffer.
+    pub fn reset_event2(&mut self, event: vk::Event, stage_mask: vk::PipelineStageFlags2) {
+        // SAFETY: command buffer and event are valid.
+        unsafe {
+            self.device.cmd_reset_event2(self.raw, event, stage_mask);
+        }
+    }
+
+    // ---- Secondary command buffer execution ----
+
+    /// Execute one or more secondary command buffers.
+    ///
+    /// The secondary command buffers must have been recorded with
+    /// `RENDER_PASS_CONTINUE_BIT` if called inside a render pass.
+    pub fn execute_commands(&mut self, secondary_buffers: &[vk::CommandBuffer]) {
+        // SAFETY: command buffer and secondary buffers are valid.
+        unsafe {
+            self.device
+                .cmd_execute_commands(self.raw, secondary_buffers);
+        }
+    }
+
+    // ---- Mesh shader commands ----
+
+    /// Dispatch mesh shader work groups.
+    ///
+    /// No-op if `VK_EXT_mesh_shader` is not available.
+    pub fn draw_mesh_tasks(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        if let Some(mesh) = &self.mesh_shader {
+            // SAFETY: command buffer is valid and a mesh shader pipeline is bound.
+            unsafe {
+                mesh.cmd_draw_mesh_tasks(self.raw, group_count_x, group_count_y, group_count_z);
+            }
+        }
+    }
+
+    /// Dispatch mesh shader work groups with parameters from a buffer.
+    ///
+    /// No-op if `VK_EXT_mesh_shader` is not available.
+    pub fn draw_mesh_tasks_indirect(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        if let Some(mesh) = &self.mesh_shader {
+            // SAFETY: command buffer and buffer are valid.
+            unsafe {
+                mesh.cmd_draw_mesh_tasks_indirect(self.raw, buffer, offset, draw_count, stride);
+            }
+        }
+    }
+
+    /// Dispatch mesh shader work groups with count from a buffer.
+    ///
+    /// No-op if `VK_EXT_mesh_shader` is not available.
+    pub fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        count_buffer: vk::Buffer,
+        count_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        if let Some(mesh) = &self.mesh_shader {
+            // SAFETY: command buffer, buffer, and count buffer are valid.
+            unsafe {
+                mesh.cmd_draw_mesh_tasks_indirect_count(
+                    self.raw,
+                    buffer,
+                    offset,
+                    count_buffer,
+                    count_offset,
+                    max_draw_count,
+                    stride,
+                );
+            }
+        }
+    }
+
+    // ---- Acceleration structure commands ----
+
+    /// Build acceleration structures.
+    ///
+    /// No-op if `VK_KHR_acceleration_structure` is not available.
+    pub fn build_acceleration_structures(
+        &mut self,
+        infos: &[vk::AccelerationStructureBuildGeometryInfoKHR<'_>],
+        build_range_infos: &[&[vk::AccelerationStructureBuildRangeInfoKHR]],
+    ) {
+        if let Some(accel) = &self.acceleration_structure {
+            // SAFETY: command buffer and build info are valid.
+            unsafe {
+                accel.cmd_build_acceleration_structures(self.raw, infos, build_range_infos);
+            }
+        }
+    }
+
+    /// Copy an acceleration structure.
+    ///
+    /// Used for compaction (compact mode) or cloning (clone mode).
+    /// No-op if `VK_KHR_acceleration_structure` is not available.
+    pub fn copy_acceleration_structure(
+        &mut self,
+        info: &vk::CopyAccelerationStructureInfoKHR<'_>,
+    ) {
+        if let Some(accel) = &self.acceleration_structure {
+            // SAFETY: command buffer and copy info are valid.
+            unsafe {
+                accel.cmd_copy_acceleration_structure(self.raw, info);
+            }
+        }
+    }
+
+    /// Write acceleration structure properties to a query pool.
+    ///
+    /// Commonly used to query compacted size after building with
+    /// `ALLOW_COMPACTION` flag. No-op if `VK_KHR_acceleration_structure`
+    /// is not available.
+    pub fn write_acceleration_structures_properties(
+        &mut self,
+        structures: &[vk::AccelerationStructureKHR],
+        query_type: vk::QueryType,
+        query_pool: vk::QueryPool,
+        first_query: u32,
+    ) {
+        if let Some(accel) = &self.acceleration_structure {
+            // SAFETY: command buffer, structures, and query pool are valid.
+            unsafe {
+                accel.cmd_write_acceleration_structures_properties(
+                    self.raw,
+                    structures,
+                    query_type,
+                    query_pool,
+                    first_query,
+                );
+            }
+        }
+    }
+
+    // ---- Device-generated commands ----
+
+    /// Preprocess device-generated commands.
+    ///
+    /// Prepares the generated commands buffer for later execution.
+    /// No-op if `VK_NV_device_generated_commands` is not available.
+    pub fn preprocess_generated_commands(
+        &mut self,
+        info: &vk::GeneratedCommandsInfoNV<'_>,
+    ) {
+        if let Some(dgc) = &self.device_generated_commands {
+            // SAFETY: command buffer and generated commands info are valid.
+            unsafe {
+                (dgc.fp().cmd_preprocess_generated_commands_nv)(self.raw, info);
+            }
+        }
+    }
+
+    /// Execute device-generated commands.
+    ///
+    /// Executes commands that were previously preprocessed (or generates and
+    /// executes in one step if `is_preprocessed` is false).
+    /// No-op if `VK_NV_device_generated_commands` is not available.
+    pub fn execute_generated_commands(
+        &mut self,
+        is_preprocessed: bool,
+        info: &vk::GeneratedCommandsInfoNV<'_>,
+    ) {
+        if let Some(dgc) = &self.device_generated_commands {
+            // SAFETY: command buffer and generated commands info are valid.
+            unsafe {
+                (dgc.fp().cmd_execute_generated_commands_nv)(
+                    self.raw,
+                    vk::Bool32::from(is_preprocessed),
+                    info,
+                );
+            }
+        }
+    }
+
     // ---- Binding commands ----
 
     /// Bind descriptor sets.
@@ -879,4 +1105,22 @@ impl CommandBuffer {
             );
         }
     }
+}
+
+/// Begin a secondary command buffer for recording.
+///
+/// Secondary command buffers can be recorded on worker threads and executed
+/// from a primary command buffer via [`CommandBuffer::execute_commands`].
+pub fn begin_secondary(
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    usage: vk::CommandBufferUsageFlags,
+    inheritance: &vk::CommandBufferInheritanceInfo<'_>,
+) -> Result<(), vk::Result> {
+    let begin_info = vk::CommandBufferBeginInfo::default()
+        .flags(usage)
+        .inheritance_info(inheritance);
+
+    // SAFETY: device and cmd are valid, begin_info is well-formed.
+    unsafe { device.begin_command_buffer(cmd, &begin_info) }
 }

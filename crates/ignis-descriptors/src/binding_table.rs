@@ -60,6 +60,11 @@ pub enum BindingSlot {
         /// The image layout at time of access.
         layout: vk::ImageLayout,
     },
+    /// Acceleration structure binding (for ray queries).
+    AccelerationStructure {
+        /// The acceleration structure handle.
+        handle: vk::AccelerationStructureKHR,
+    },
 }
 
 impl Hash for BindingSlot {
@@ -102,6 +107,9 @@ impl Hash for BindingSlot {
                 view.hash(state);
                 (*layout).hash(state);
             }
+            BindingSlot::AccelerationStructure { handle } => {
+                handle.hash(state);
+            }
         }
     }
 }
@@ -130,6 +138,10 @@ impl PartialEq for BindingSlot {
                 BindingSlot::InputAttachment { view: v1, layout: l1 },
                 BindingSlot::InputAttachment { view: v2, layout: l2 },
             ) => v1 == v2 && l1 == l2,
+            (
+                BindingSlot::AccelerationStructure { handle: h1 },
+                BindingSlot::AccelerationStructure { handle: h2 },
+            ) => h1 == h2,
             _ => false,
         }
     }
@@ -299,6 +311,20 @@ impl BindingTable {
                 view,
                 layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
+        );
+    }
+
+    /// Set an acceleration structure binding (for ray queries).
+    pub fn set_acceleration_structure(
+        &mut self,
+        set: u32,
+        binding: u32,
+        handle: vk::AccelerationStructureKHR,
+    ) {
+        self.set_binding(
+            set,
+            binding,
+            BindingSlot::AccelerationStructure { handle },
         );
     }
 

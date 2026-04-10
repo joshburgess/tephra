@@ -516,6 +516,22 @@ impl<'a> DrawContext<'a> {
         self.state.alpha_to_coverage = enable;
     }
 
+    /// Enable or disable conservative rasterization.
+    ///
+    /// When enabled, rasterization uses overestimation mode. Requires
+    /// `VK_EXT_conservative_rasterization`.
+    pub fn set_conservative_rasterization(&mut self, enable: bool) {
+        self.state.conservative_rasterization = enable;
+    }
+
+    /// Set the required subgroup size for compute/mesh/task shader stages.
+    ///
+    /// The required size is `1 << log2`. Pass 0 to use the driver default.
+    /// Requires `VK_EXT_subgroup_size_control`.
+    pub fn set_subgroup_size_log2(&mut self, log2: u8) {
+        self.state.subgroup_size_log2 = log2;
+    }
+
     /// Set a specialization constant value.
     ///
     /// `index` must be in `0..8`. The value is reinterpreted as float/int/bool
@@ -616,6 +632,17 @@ impl<'a> DrawContext<'a> {
     /// Bind an input attachment.
     pub fn set_input_attachment(&mut self, set: u32, binding: u32, view: vk::ImageView) {
         self.bindings.set_input_attachment(set, binding, view);
+    }
+
+    /// Bind an acceleration structure for ray queries.
+    pub fn set_acceleration_structure(
+        &mut self,
+        set: u32,
+        binding: u32,
+        handle: vk::AccelerationStructureKHR,
+    ) {
+        self.bindings
+            .set_acceleration_structure(set, binding, handle);
     }
 
     /// Push constants from a raw byte slice.
@@ -764,6 +791,90 @@ impl<'a> DrawContext<'a> {
 
         self.cmd
             .draw_indexed_indirect(buffer, offset, draw_count, stride);
+        Ok(())
+    }
+
+    /// Issue a mesh shader draw call.
+    ///
+    /// Automatically resolves the pipeline (with no vertex input state) and
+    /// flushes descriptor sets. Requires `VK_EXT_mesh_shader`.
+    pub fn draw_mesh_tasks(
+        &mut self,
+        program: &mut Program,
+        group_count_x: u32,
+        group_count_y: u32,
+        group_count_z: u32,
+    ) -> Result<(), DrawError> {
+        if !self.in_render_pass {
+            return Err(DrawError::NotInRenderPass);
+        }
+
+        // Mesh shader pipelines use an empty vertex layout
+        let empty_layout = VertexInputLayout::default();
+        self.resolve_graphics_pipeline(program, &empty_layout)?;
+        self.flush_descriptor_sets(program)?;
+
+        self.cmd
+            .draw_mesh_tasks(group_count_x, group_count_y, group_count_z);
+        Ok(())
+    }
+
+    /// Issue an indirect mesh shader draw call.
+    ///
+    /// Automatically resolves the pipeline and flushes descriptor sets.
+    /// Requires `VK_EXT_mesh_shader`.
+    pub fn draw_mesh_tasks_indirect(
+        &mut self,
+        program: &mut Program,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<(), DrawError> {
+        if !self.in_render_pass {
+            return Err(DrawError::NotInRenderPass);
+        }
+
+        let empty_layout = VertexInputLayout::default();
+        self.resolve_graphics_pipeline(program, &empty_layout)?;
+        self.flush_descriptor_sets(program)?;
+
+        self.cmd
+            .draw_mesh_tasks_indirect(buffer, offset, draw_count, stride);
+        Ok(())
+    }
+
+    /// Issue an indirect mesh shader draw call with a count buffer.
+    ///
+    /// Automatically resolves the pipeline and flushes descriptor sets.
+    /// Requires `VK_EXT_mesh_shader`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        program: &mut Program,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        count_buffer: vk::Buffer,
+        count_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<(), DrawError> {
+        if !self.in_render_pass {
+            return Err(DrawError::NotInRenderPass);
+        }
+
+        let empty_layout = VertexInputLayout::default();
+        self.resolve_graphics_pipeline(program, &empty_layout)?;
+        self.flush_descriptor_sets(program)?;
+
+        self.cmd.draw_mesh_tasks_indirect_count(
+            buffer,
+            offset,
+            count_buffer,
+            count_offset,
+            max_draw_count,
+            stride,
+        );
         Ok(())
     }
 
@@ -951,7 +1062,7 @@ impl<'a> DrawContext<'a> {
                 if let Some(push_device) = self.push_descriptor_device {
                     let prepared = PreparedDescriptorWrites::from_bindings(&set_bindings);
                     if !prepared.is_empty() {
-                        let writes = prepared.build_writes(vk::DescriptorSet::null());
+                        let write_set = prepared.build_writes(vk::DescriptorSet::null());
                         // SAFETY: command buffer, pipeline layout, and descriptor data are valid.
                         unsafe {
                             push_device.cmd_push_descriptor_set(
@@ -959,7 +1070,7 @@ impl<'a> DrawContext<'a> {
                                 bind_point,
                                 program.pipeline_layout(),
                                 set_idx,
-                                &writes,
+                                write_set.writes(),
                             );
                         }
                     }
