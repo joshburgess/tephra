@@ -35,4 +35,4 @@ Built on [`ash`](https://crates.io/crates/ash) + [`gpu-allocator`](https://crate
 
 ## License
 
-MIT OR Apache-2.0
+Dual licensed under [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
