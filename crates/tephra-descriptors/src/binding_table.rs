@@ -15,7 +15,7 @@ pub const MAX_DESCRIPTOR_SETS: usize = 4;
 pub const MAX_BINDINGS_PER_SET: usize = 16;
 
 /// A single binding slot in a descriptor set.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum BindingSlot {
     /// No binding set.
     None,
@@ -186,7 +186,7 @@ impl PartialEq for BindingSlot {
 impl Eq for BindingSlot {}
 
 /// Bindings for a single descriptor set.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DescriptorSetBindings {
     pub(crate) bindings: [BindingSlot; MAX_BINDINGS_PER_SET],
     pub(crate) active_mask: u32,
@@ -423,5 +423,421 @@ impl BindingTable {
 impl Default for BindingTable {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::hash::{Hash, Hasher};
+
+    use ash::vk::{self, Handle};
+    use rustc_hash::FxHasher;
+
+    fn hash_of(bindings: &DescriptorSetBindings) -> u64 {
+        let mut hasher = FxHasher::default();
+        bindings.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    // --- BindingSlot Hash / Equality ---
+
+    #[test]
+    fn none_slots_are_equal() {
+        assert_eq!(BindingSlot::None, BindingSlot::None);
+    }
+
+    #[test]
+    fn different_variant_types_not_equal() {
+        let ub = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        let sb = BindingSlot::StorageBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        assert_ne!(ub, sb);
+    }
+
+    #[test]
+    fn uniform_buffer_equality() {
+        let a = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 256,
+        };
+        let b = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 256,
+        };
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn uniform_buffer_different_offset() {
+        let a = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 256,
+        };
+        let b = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 64,
+            range: 256,
+        };
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn combined_image_sampler_equality() {
+        let a = BindingSlot::CombinedImageSampler {
+            view: vk::ImageView::from_raw(10),
+            sampler: vk::Sampler::from_raw(20),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        let b = BindingSlot::CombinedImageSampler {
+            view: vk::ImageView::from_raw(10),
+            sampler: vk::Sampler::from_raw(20),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn combined_image_sampler_different_sampler() {
+        let a = BindingSlot::CombinedImageSampler {
+            view: vk::ImageView::from_raw(10),
+            sampler: vk::Sampler::from_raw(20),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        let b = BindingSlot::CombinedImageSampler {
+            view: vk::ImageView::from_raw(10),
+            sampler: vk::Sampler::from_raw(99),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        assert_ne!(a, b);
+    }
+
+    // --- DescriptorSetBindings Hash / Equality ---
+
+    #[test]
+    fn empty_bindings_equal() {
+        let a = DescriptorSetBindings::default();
+        let b = DescriptorSetBindings::default();
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn empty_bindings_is_empty() {
+        let b = DescriptorSetBindings::default();
+        assert!(b.is_empty());
+        assert_eq!(b.active_mask(), 0);
+    }
+
+    #[test]
+    fn identical_single_binding_same_hash() {
+        let make = || {
+            let mut b = DescriptorSetBindings::default();
+            b.bindings[0] = BindingSlot::UniformBuffer {
+                buffer: vk::Buffer::from_raw(42),
+                offset: 0,
+                range: 128,
+            };
+            b.active_mask = 1;
+            b
+        };
+        let a = make();
+        let b = make();
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn different_buffer_handle_different_hash() {
+        let mut a = DescriptorSetBindings::default();
+        a.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        a.active_mask = 1;
+
+        let mut b = DescriptorSetBindings::default();
+        b.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(2),
+            offset: 0,
+            range: 64,
+        };
+        b.active_mask = 1;
+
+        assert_ne!(a, b);
+        assert_ne!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn different_binding_slot_different_hash() {
+        // Same data in binding[0] vs binding[1]
+        let mut a = DescriptorSetBindings::default();
+        a.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        a.active_mask = 1; // bit 0
+
+        let mut b = DescriptorSetBindings::default();
+        b.bindings[1] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        b.active_mask = 2; // bit 1
+
+        assert_ne!(a, b);
+        assert_ne!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn different_range_different_hash() {
+        let mut a = DescriptorSetBindings::default();
+        a.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        a.active_mask = 1;
+
+        let mut b = DescriptorSetBindings::default();
+        b.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 128,
+        };
+        b.active_mask = 1;
+
+        assert_ne!(a, b);
+        assert_ne!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn uniform_vs_storage_different_hash() {
+        let mut a = DescriptorSetBindings::default();
+        a.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        a.active_mask = 1;
+
+        let mut b = DescriptorSetBindings::default();
+        b.bindings[0] = BindingSlot::StorageBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        b.active_mask = 1;
+
+        assert_ne!(a, b);
+        assert_ne!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn multiple_bindings_hash_stability() {
+        let make = || {
+            let mut b = DescriptorSetBindings::default();
+            b.bindings[0] = BindingSlot::UniformBuffer {
+                buffer: vk::Buffer::from_raw(1),
+                offset: 0,
+                range: 64,
+            };
+            b.bindings[3] = BindingSlot::CombinedImageSampler {
+                view: vk::ImageView::from_raw(10),
+                sampler: vk::Sampler::from_raw(20),
+                layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            };
+            b.active_mask = (1 << 0) | (1 << 3);
+            b
+        };
+        let a = make();
+        let b = make();
+        assert_eq!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn inactive_slots_ignored_in_equality() {
+        let mut a = DescriptorSetBindings::default();
+        a.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        a.active_mask = 1;
+        // Leave bindings[5] as junk but not in active_mask
+        a.bindings[5] = BindingSlot::StorageBuffer {
+            buffer: vk::Buffer::from_raw(99),
+            offset: 0,
+            range: 256,
+        };
+
+        let mut b = DescriptorSetBindings::default();
+        b.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        b.active_mask = 1;
+
+        // They should be equal because only active slots are compared
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+    }
+
+    // --- BindingTable Dirty Tracking ---
+
+    #[test]
+    fn new_table_not_dirty() {
+        let table = BindingTable::new();
+        assert_eq!(table.dirty_sets(), 0);
+    }
+
+    #[test]
+    fn set_uniform_buffer_marks_dirty() {
+        let mut table = BindingTable::new();
+        table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(1), 0, 64);
+        assert_ne!(table.dirty_sets() & 1, 0); // set 0 is dirty
+    }
+
+    #[test]
+    fn set_texture_marks_dirty() {
+        let mut table = BindingTable::new();
+        table.set_texture(
+            2,
+            0,
+            vk::ImageView::from_raw(1),
+            vk::Sampler::from_raw(2),
+        );
+        assert_ne!(table.dirty_sets() & (1 << 2), 0); // set 2 is dirty
+    }
+
+    #[test]
+    fn clear_dirty_clears_single_set() {
+        let mut table = BindingTable::new();
+        table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(1), 0, 64);
+        table.set_uniform_buffer(1, 0, vk::Buffer::from_raw(2), 0, 64);
+        assert_ne!(table.dirty_sets() & 0b11, 0);
+
+        table.clear_dirty(0);
+        assert_eq!(table.dirty_sets() & 1, 0); // set 0 no longer dirty
+        assert_ne!(table.dirty_sets() & 2, 0); // set 1 still dirty
+    }
+
+    #[test]
+    fn clear_all_dirty_clears_all() {
+        let mut table = BindingTable::new();
+        table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(1), 0, 64);
+        table.set_uniform_buffer(1, 0, vk::Buffer::from_raw(2), 0, 64);
+        table.set_uniform_buffer(2, 0, vk::Buffer::from_raw(3), 0, 64);
+        table.clear_all_dirty();
+        assert_eq!(table.dirty_sets(), 0);
+    }
+
+    #[test]
+    fn mark_dirty_forces_dirty() {
+        let mut table = BindingTable::new();
+        table.mark_dirty(3);
+        assert_ne!(table.dirty_sets() & (1 << 3), 0);
+    }
+
+    #[test]
+    fn mark_all_dirty() {
+        let mut table = BindingTable::new();
+        table.mark_all_dirty();
+        assert_eq!(table.dirty_sets(), (1 << MAX_DESCRIPTOR_SETS) - 1);
+    }
+
+    #[test]
+    fn clear_set_marks_dirty_and_empties_bindings() {
+        let mut table = BindingTable::new();
+        table.set_uniform_buffer(1, 0, vk::Buffer::from_raw(1), 0, 64);
+        table.clear_all_dirty();
+
+        table.clear_set(1);
+        assert_ne!(table.dirty_sets() & (1 << 1), 0); // clearing marks dirty
+        assert!(table.set(1).is_empty());
+    }
+
+    #[test]
+    fn clear_all_marks_all_dirty() {
+        let mut table = BindingTable::new();
+        table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(1), 0, 64);
+        table.clear_all_dirty();
+
+        table.clear_all();
+        assert_eq!(table.dirty_sets(), (1 << MAX_DESCRIPTOR_SETS) - 1);
+        for i in 0..MAX_DESCRIPTOR_SETS {
+            assert!(table.set(i as u32).is_empty());
+        }
+    }
+
+    #[test]
+    fn set_storage_buffer_updates_active_mask() {
+        let mut table = BindingTable::new();
+        table.set_storage_buffer(0, 5, vk::Buffer::from_raw(1), 0, 128);
+        assert_ne!(table.set(0).active_mask() & (1 << 5), 0);
+    }
+
+    #[test]
+    fn set_storage_image_updates_active_mask() {
+        let mut table = BindingTable::new();
+        table.set_storage_image(0, 2, vk::ImageView::from_raw(1));
+        assert_ne!(table.set(0).active_mask() & (1 << 2), 0);
+    }
+
+    #[test]
+    fn set_input_attachment_updates_active_mask() {
+        let mut table = BindingTable::new();
+        table.set_input_attachment(0, 7, vk::ImageView::from_raw(1));
+        assert_ne!(table.set(0).active_mask() & (1 << 7), 0);
+    }
+
+    #[test]
+    fn set_acceleration_structure_updates_active_mask() {
+        let mut table = BindingTable::new();
+        table.set_acceleration_structure(
+            0,
+            0,
+            vk::AccelerationStructureKHR::from_raw(1),
+        );
+        assert_ne!(table.set(0).active_mask() & 1, 0);
+    }
+
+    #[test]
+    fn overwrite_binding_preserves_active_mask() {
+        let mut table = BindingTable::new();
+        table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(1), 0, 64);
+        table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(2), 0, 128);
+        // Still active at binding 0
+        assert_ne!(table.set(0).active_mask() & 1, 0);
+    }
+
+    #[test]
+    fn hash_consistency_across_table_access() {
+        let mut table = BindingTable::new();
+        table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(1), 0, 64);
+        table.set_texture(
+            0,
+            1,
+            vk::ImageView::from_raw(10),
+            vk::Sampler::from_raw(20),
+        );
+
+        let h1 = hash_of(table.set(0));
+        let h2 = hash_of(table.set(0));
+        assert_eq!(h1, h2);
     }
 }

@@ -307,3 +307,219 @@ impl Default for DescriptorSetCache {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::binding_table::{BindingSlot, DescriptorSetBindings};
+    use ash::vk::{self, Handle};
+
+    fn make_bindings(buffer_raw: u64, offset: u64, range: u64) -> DescriptorSetBindings {
+        let mut b = DescriptorSetBindings::default();
+        b.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(buffer_raw),
+            offset,
+            range,
+        };
+        b.active_mask = 1;
+        b
+    }
+
+    #[test]
+    fn cache_starts_empty() {
+        let cache = DescriptorSetCache::new();
+        assert_eq!(cache.cache.len(), 0);
+    }
+
+    #[test]
+    fn identical_bindings_produce_same_hash() {
+        let a = make_bindings(1, 0, 64);
+        let b = make_bindings(1, 0, 64);
+        let ha = DescriptorSetCache::hash_bindings(&a);
+        let hb = DescriptorSetCache::hash_bindings(&b);
+        assert_eq!(ha, hb);
+    }
+
+    #[test]
+    fn different_buffer_produces_different_hash() {
+        let a = make_bindings(1, 0, 64);
+        let b = make_bindings(2, 0, 64);
+        assert_ne!(
+            DescriptorSetCache::hash_bindings(&a),
+            DescriptorSetCache::hash_bindings(&b),
+        );
+    }
+
+    #[test]
+    fn different_offset_produces_different_hash() {
+        let a = make_bindings(1, 0, 64);
+        let b = make_bindings(1, 128, 64);
+        assert_ne!(
+            DescriptorSetCache::hash_bindings(&a),
+            DescriptorSetCache::hash_bindings(&b),
+        );
+    }
+
+    #[test]
+    fn different_range_produces_different_hash() {
+        let a = make_bindings(1, 0, 64);
+        let b = make_bindings(1, 0, 256);
+        assert_ne!(
+            DescriptorSetCache::hash_bindings(&a),
+            DescriptorSetCache::hash_bindings(&b),
+        );
+    }
+
+    #[test]
+    fn empty_bindings_hash_is_stable() {
+        let a = DescriptorSetBindings::default();
+        let b = DescriptorSetBindings::default();
+        assert_eq!(
+            DescriptorSetCache::hash_bindings(&a),
+            DescriptorSetCache::hash_bindings(&b),
+        );
+    }
+
+    #[test]
+    fn image_binding_hash_differs_from_buffer() {
+        let mut buf = DescriptorSetBindings::default();
+        buf.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        buf.active_mask = 1;
+
+        let mut img = DescriptorSetBindings::default();
+        img.bindings[0] = BindingSlot::CombinedImageSampler {
+            view: vk::ImageView::from_raw(1),
+            sampler: vk::Sampler::from_raw(0),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        img.active_mask = 1;
+
+        assert_ne!(
+            DescriptorSetCache::hash_bindings(&buf),
+            DescriptorSetCache::hash_bindings(&img),
+        );
+    }
+
+    #[test]
+    fn different_image_layout_different_hash() {
+        let make = |layout: vk::ImageLayout| {
+            let mut b = DescriptorSetBindings::default();
+            b.bindings[0] = BindingSlot::StorageImage {
+                view: vk::ImageView::from_raw(1),
+                layout,
+            };
+            b.active_mask = 1;
+            b
+        };
+        let a = make(vk::ImageLayout::GENERAL);
+        let b = make(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+        assert_ne!(
+            DescriptorSetCache::hash_bindings(&a),
+            DescriptorSetCache::hash_bindings(&b),
+        );
+    }
+
+    #[test]
+    fn reset_clears_cache() {
+        let mut cache = DescriptorSetCache::new();
+        // Manually insert an entry to simulate a cached set
+        cache.cache.insert(12345, vk::DescriptorSet::from_raw(1));
+        assert_eq!(cache.cache.len(), 1);
+
+        cache.reset();
+        assert_eq!(cache.cache.len(), 0);
+    }
+
+    #[test]
+    fn hash_with_multiple_active_bindings() {
+        let mut a = DescriptorSetBindings::default();
+        a.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        a.bindings[2] = BindingSlot::StorageBuffer {
+            buffer: vk::Buffer::from_raw(2),
+            offset: 0,
+            range: 128,
+        };
+        a.bindings[5] = BindingSlot::CombinedImageSampler {
+            view: vk::ImageView::from_raw(3),
+            sampler: vk::Sampler::from_raw(4),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        a.active_mask = (1 << 0) | (1 << 2) | (1 << 5);
+
+        // Same bindings should produce same hash
+        let mut b = a.clone();
+        assert_eq!(
+            DescriptorSetCache::hash_bindings(&a),
+            DescriptorSetCache::hash_bindings(&b),
+        );
+
+        // Change one binding — hash should differ
+        b.bindings[2] = BindingSlot::StorageBuffer {
+            buffer: vk::Buffer::from_raw(99),
+            offset: 0,
+            range: 128,
+        };
+        assert_ne!(
+            DescriptorSetCache::hash_bindings(&a),
+            DescriptorSetCache::hash_bindings(&b),
+        );
+    }
+
+    #[test]
+    fn prepared_writes_empty_for_empty_bindings() {
+        let bindings = DescriptorSetBindings::default();
+        let prepared = PreparedDescriptorWrites::from_bindings(&bindings);
+        assert!(prepared.is_empty());
+    }
+
+    #[test]
+    fn prepared_writes_count_matches_active_bindings() {
+        let mut bindings = DescriptorSetBindings::default();
+        bindings.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        bindings.bindings[3] = BindingSlot::StorageBuffer {
+            buffer: vk::Buffer::from_raw(2),
+            offset: 0,
+            range: 128,
+        };
+        bindings.active_mask = (1 << 0) | (1 << 3);
+
+        let prepared = PreparedDescriptorWrites::from_bindings(&bindings);
+        assert!(!prepared.is_empty());
+        assert_eq!(prepared.entries.len(), 2);
+        assert_eq!(prepared.buffer_infos.len(), 2);
+        assert_eq!(prepared.image_infos.len(), 0);
+    }
+
+    #[test]
+    fn prepared_writes_mixed_types() {
+        let mut bindings = DescriptorSetBindings::default();
+        bindings.bindings[0] = BindingSlot::UniformBuffer {
+            buffer: vk::Buffer::from_raw(1),
+            offset: 0,
+            range: 64,
+        };
+        bindings.bindings[1] = BindingSlot::CombinedImageSampler {
+            view: vk::ImageView::from_raw(2),
+            sampler: vk::Sampler::from_raw(3),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+        bindings.active_mask = (1 << 0) | (1 << 1);
+
+        let prepared = PreparedDescriptorWrites::from_bindings(&bindings);
+        assert_eq!(prepared.buffer_infos.len(), 1);
+        assert_eq!(prepared.image_infos.len(), 1);
+        assert_eq!(prepared.entries.len(), 2);
+    }
+}

@@ -408,3 +408,163 @@ impl FrameContextManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ash::vk::{self, Handle};
+
+    #[test]
+    fn deletion_queue_starts_empty() {
+        let queue = DeletionQueue::new();
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn deletion_queue_push_makes_non_empty() {
+        let mut queue = DeletionQueue::new();
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(42)));
+        assert!(!queue.is_empty());
+    }
+
+    #[test]
+    fn deletion_queue_drain_empties() {
+        let mut queue = DeletionQueue::new();
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(1)));
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(2)));
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(3)));
+
+        let count = queue.drain().count();
+        assert_eq!(count, 3);
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn deletion_queue_drain_preserves_order() {
+        let mut queue = DeletionQueue::new();
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(10)));
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(20)));
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(30)));
+
+        let handles: Vec<u64> = queue
+            .drain()
+            .map(|d| match d {
+                DeferredDeletion::ImageView(v) => v.as_raw(),
+                _ => 0,
+            })
+            .collect();
+        assert_eq!(handles, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn deletion_queue_reusable_after_drain() {
+        let mut queue = DeletionQueue::new();
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(1)));
+        let _ = queue.drain().count();
+        assert!(queue.is_empty());
+
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(2)));
+        assert!(!queue.is_empty());
+        assert_eq!(queue.drain().count(), 1);
+    }
+
+    #[test]
+    fn command_pool_fallback_graphics() {
+        let ctx = FrameContext::new(
+            vk::Fence::null(),
+            vk::CommandPool::from_raw(100),
+            None,
+            None,
+        );
+        // Graphics always returns the graphics pool
+        assert_eq!(
+            ctx.command_pool(QueueType::Graphics).as_raw(),
+            100
+        );
+        // Compute/Transfer fall back to graphics when no dedicated pool
+        assert_eq!(
+            ctx.command_pool(QueueType::Compute).as_raw(),
+            100
+        );
+        assert_eq!(
+            ctx.command_pool(QueueType::Transfer).as_raw(),
+            100
+        );
+    }
+
+    #[test]
+    fn command_pool_dedicated_compute() {
+        let ctx = FrameContext::new(
+            vk::Fence::null(),
+            vk::CommandPool::from_raw(100),
+            Some(vk::CommandPool::from_raw(200)),
+            None,
+        );
+        assert_eq!(
+            ctx.command_pool(QueueType::Graphics).as_raw(),
+            100
+        );
+        assert_eq!(
+            ctx.command_pool(QueueType::Compute).as_raw(),
+            200
+        );
+        // Transfer still falls back
+        assert_eq!(
+            ctx.command_pool(QueueType::Transfer).as_raw(),
+            100
+        );
+    }
+
+    #[test]
+    fn command_pool_dedicated_transfer() {
+        let ctx = FrameContext::new(
+            vk::Fence::null(),
+            vk::CommandPool::from_raw(100),
+            None,
+            Some(vk::CommandPool::from_raw(300)),
+        );
+        assert_eq!(
+            ctx.command_pool(QueueType::Transfer).as_raw(),
+            300
+        );
+    }
+
+    #[test]
+    fn command_pool_all_dedicated() {
+        let ctx = FrameContext::new(
+            vk::Fence::null(),
+            vk::CommandPool::from_raw(100),
+            Some(vk::CommandPool::from_raw(200)),
+            Some(vk::CommandPool::from_raw(300)),
+        );
+        assert_eq!(ctx.command_pool(QueueType::Graphics).as_raw(), 100);
+        assert_eq!(ctx.command_pool(QueueType::Compute).as_raw(), 200);
+        assert_eq!(ctx.command_pool(QueueType::Transfer).as_raw(), 300);
+    }
+
+    #[test]
+    fn frame_context_initial_state() {
+        let ctx = FrameContext::new(
+            vk::Fence::null(),
+            vk::CommandPool::from_raw(1),
+            None,
+            None,
+        );
+        assert!(!ctx.fence_submitted);
+        assert!(ctx.deletion_queue.is_empty());
+    }
+
+    #[test]
+    fn deletion_queue_multiple_types() {
+        let mut queue = DeletionQueue::new();
+        queue.push(DeferredDeletion::ImageView(vk::ImageView::from_raw(1)));
+        queue.push(DeferredDeletion::Sampler(vk::Sampler::from_raw(2)));
+        queue.push(DeferredDeletion::Pipeline(vk::Pipeline::from_raw(3)));
+        queue.push(DeferredDeletion::Framebuffer(vk::Framebuffer::from_raw(4)));
+        queue.push(DeferredDeletion::DescriptorPool(
+            vk::DescriptorPool::from_raw(5),
+        ));
+        assert_eq!(queue.drain().count(), 5);
+        assert!(queue.is_empty());
+    }
+}
