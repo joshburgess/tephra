@@ -5,7 +5,9 @@
 //! buffer/image creation helpers, and sampler caching.
 
 pub mod buffer;
+pub mod buffer_pool;
 pub mod context;
+pub mod cookie;
 pub mod device;
 pub mod frame_context;
 pub mod handles;

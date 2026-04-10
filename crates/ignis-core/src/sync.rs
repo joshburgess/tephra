@@ -106,6 +106,92 @@ impl FencePool {
     }
 }
 
+/// Per-queue timeline semaphore for fine-grained GPU synchronization.
+///
+/// Each queue gets a timeline semaphore with a monotonically increasing value.
+/// Submit operations signal the next value; consumers wait on specific values.
+/// This enables efficient cross-queue synchronization and frame pacing without
+/// per-frame fences.
+///
+/// Requires `VK_KHR_timeline_semaphore` (core in Vulkan 1.2).
+pub struct TimelineSemaphore {
+    semaphore: vk::Semaphore,
+    value: u64,
+}
+
+impl TimelineSemaphore {
+    /// Create a new timeline semaphore with initial value 0.
+    pub fn new(device: &ash::Device) -> Result<Self, vk::Result> {
+        let mut type_ci = vk::SemaphoreTypeCreateInfo::default()
+            .semaphore_type(vk::SemaphoreType::TIMELINE)
+            .initial_value(0);
+
+        let ci = vk::SemaphoreCreateInfo::default().push_next(&mut type_ci);
+
+        // SAFETY: device is valid, ci is well-formed.
+        let semaphore = unsafe { device.create_semaphore(&ci, None)? };
+
+        Ok(Self {
+            semaphore,
+            value: 0,
+        })
+    }
+
+    /// The raw Vulkan semaphore handle.
+    pub fn raw(&self) -> vk::Semaphore {
+        self.semaphore
+    }
+
+    /// The current timeline value (last signaled or pending).
+    pub fn value(&self) -> u64 {
+        self.value
+    }
+
+    /// Advance and return the next timeline value to be signaled on submit.
+    pub fn next_value(&mut self) -> u64 {
+        self.value += 1;
+        self.value
+    }
+
+    /// Wait for the timeline to reach at least `target` value.
+    ///
+    /// Returns `Ok(true)` if signaled, `Ok(false)` on timeout.
+    pub fn wait(
+        &self,
+        device: &ash::Device,
+        target: u64,
+        timeout_ns: u64,
+    ) -> Result<bool, vk::Result> {
+        let wait_info = vk::SemaphoreWaitInfo::default()
+            .semaphores(std::slice::from_ref(&self.semaphore))
+            .values(std::slice::from_ref(&target));
+
+        // SAFETY: device and semaphore are valid.
+        match unsafe { device.wait_semaphores(&wait_info, timeout_ns) } {
+            Ok(()) => Ok(true),
+            Err(vk::Result::TIMEOUT) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Query the current GPU-side timeline value.
+    pub fn get_counter_value(&self, device: &ash::Device) -> Result<u64, vk::Result> {
+        // SAFETY: device and semaphore are valid.
+        unsafe { device.get_semaphore_counter_value(self.semaphore) }
+    }
+
+    /// Destroy the timeline semaphore.
+    pub fn destroy(&mut self, device: &ash::Device) {
+        if self.semaphore != vk::Semaphore::null() {
+            // SAFETY: device is valid, semaphore is valid, GPU is idle.
+            unsafe {
+                device.destroy_semaphore(self.semaphore, None);
+            }
+            self.semaphore = vk::Semaphore::null();
+        }
+    }
+}
+
 /// Sync-related methods on Device.
 impl Device {
     /// Request a semaphore from the recycling pool.

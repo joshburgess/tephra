@@ -94,6 +94,24 @@ pub struct RenderingAttachment {
     pub clear_value: vk::ClearValue,
 }
 
+/// Snapshot of draw context state for save/restore.
+///
+/// Created by [`DrawContext::save_state`] and applied by [`DrawContext::restore_state`].
+/// Captures the current pipeline state, descriptor bindings, and bound pipeline
+/// so you can temporarily change state (e.g., for UI overlay or debug drawing)
+/// and restore the previous state afterward.
+#[derive(Clone)]
+pub struct SavedDrawState {
+    /// Descriptor binding table snapshot.
+    pub bindings: BindingTable,
+    /// Static pipeline state snapshot.
+    pub state: StaticPipelineState,
+    /// Currently bound pipeline handle.
+    pub bound_pipeline: vk::Pipeline,
+    /// Hash of the currently bound program.
+    pub bound_program_hash: u64,
+}
+
 /// High-level draw context integrating command buffers, descriptors, and pipelines.
 ///
 /// Wraps a [`CommandBuffer`] and provides Granite-style convenience: set your
@@ -451,6 +469,69 @@ impl<'a> DrawContext<'a> {
         );
     }
 
+    /// Enable or disable depth bias (constant/clamp/slope are dynamic state).
+    pub fn set_depth_bias_enable(&mut self, enable: bool) {
+        self.state.depth_bias_enable = enable;
+    }
+
+    /// Set front-face stencil operations.
+    pub fn set_stencil_front(
+        &mut self,
+        fail_op: vk::StencilOp,
+        pass_op: vk::StencilOp,
+        depth_fail_op: vk::StencilOp,
+        compare_op: vk::CompareOp,
+    ) {
+        self.state.stencil_front = ignis_command::state::StencilFaceState {
+            fail_op,
+            depth_fail_op,
+            pass_op,
+            compare_op,
+        };
+    }
+
+    /// Set back-face stencil operations.
+    pub fn set_stencil_back(
+        &mut self,
+        fail_op: vk::StencilOp,
+        pass_op: vk::StencilOp,
+        depth_fail_op: vk::StencilOp,
+        compare_op: vk::CompareOp,
+    ) {
+        self.state.stencil_back = ignis_command::state::StencilFaceState {
+            fail_op,
+            depth_fail_op,
+            pass_op,
+            compare_op,
+        };
+    }
+
+    /// Set the rasterization sample count.
+    pub fn set_rasterization_samples(&mut self, samples: vk::SampleCountFlags) {
+        self.state.rasterization_samples = samples;
+    }
+
+    /// Enable or disable alpha-to-coverage multisampling.
+    pub fn set_alpha_to_coverage(&mut self, enable: bool) {
+        self.state.alpha_to_coverage = enable;
+    }
+
+    /// Set a specialization constant value.
+    ///
+    /// `index` must be in `0..8`. The value is reinterpreted as float/int/bool
+    /// depending on the shader's spec constant type.
+    pub fn set_specialization_constant(&mut self, index: u32, value: u32) {
+        assert!(index < 8, "specialization constant index must be < 8");
+        self.state.spec_constant_mask |= 1 << index;
+        self.state.spec_constants[index as usize] = value;
+    }
+
+    /// Clear all specialization constants.
+    pub fn clear_specialization_constants(&mut self) {
+        self.state.spec_constant_mask = 0;
+        self.state.spec_constants = [0; 8];
+    }
+
     /// Get a mutable reference to the full pipeline state.
     pub fn state_mut(&mut self) -> &mut StaticPipelineState {
         &mut self.state
@@ -459,6 +540,33 @@ impl<'a> DrawContext<'a> {
     /// Get a reference to the current pipeline state.
     pub fn state(&self) -> &StaticPipelineState {
         &self.state
+    }
+
+    // ---- State save/restore ----
+
+    /// Snapshot the current draw state (bindings, pipeline state, bound pipeline).
+    ///
+    /// Returns a [`SavedDrawState`] that can be passed to [`restore_state`](Self::restore_state).
+    /// Useful for UI overlays, debug draws, or any pattern that temporarily
+    /// changes draw state and needs to restore it afterward.
+    pub fn save_state(&self) -> SavedDrawState {
+        SavedDrawState {
+            bindings: self.bindings.clone(),
+            state: self.state.clone(),
+            bound_pipeline: self.bound_pipeline,
+            bound_program_hash: self.bound_program_hash,
+        }
+    }
+
+    /// Restore a previously saved draw state.
+    ///
+    /// Marks all descriptor sets as dirty so they will be re-flushed on the next draw.
+    pub fn restore_state(&mut self, saved: &SavedDrawState) {
+        self.bindings = saved.bindings.clone();
+        self.state = saved.state.clone();
+        self.bound_pipeline = saved.bound_pipeline;
+        self.bound_program_hash = saved.bound_program_hash;
+        self.bindings.mark_all_dirty();
     }
 
     // ---- Descriptor binding ----

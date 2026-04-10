@@ -392,19 +392,23 @@ pub(crate) fn build_graphics_pipeline(
         .polygon_mode(state.polygon_mode)
         .cull_mode(state.cull_mode)
         .front_face(state.front_face)
-        .depth_bias_enable(false)
+        .depth_bias_enable(state.depth_bias_enable)
         .line_width(1.0);
 
     let multisample_ci = vk::PipelineMultisampleStateCreateInfo::default()
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1)
-        .sample_shading_enable(false);
+        .rasterization_samples(state.rasterization_samples)
+        .sample_shading_enable(state.sample_shading)
+        .alpha_to_coverage_enable(state.alpha_to_coverage)
+        .alpha_to_one_enable(state.alpha_to_one);
 
     let depth_stencil_ci = vk::PipelineDepthStencilStateCreateInfo::default()
         .depth_test_enable(state.depth_test)
         .depth_write_enable(state.depth_write)
         .depth_compare_op(state.depth_compare)
         .depth_bounds_test_enable(false)
-        .stencil_test_enable(state.stencil_test);
+        .stencil_test_enable(state.stencil_test)
+        .front(state.stencil_front.to_vk())
+        .back(state.stencil_back.to_vk());
 
     let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
         .blend_enable(state.blend_enable)
@@ -422,9 +426,54 @@ pub(crate) fn build_graphics_pipeline(
         .logic_op_enable(false)
         .attachments(&blend_attachments);
 
-    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    let mut dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    if state.depth_bias_enable {
+        dynamic_states.push(vk::DynamicState::DEPTH_BIAS);
+    }
+    if state.stencil_test {
+        dynamic_states.push(vk::DynamicState::STENCIL_COMPARE_MASK);
+        dynamic_states.push(vk::DynamicState::STENCIL_WRITE_MASK);
+        dynamic_states.push(vk::DynamicState::STENCIL_REFERENCE);
+    }
+
     let dynamic_state_ci =
         vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+
+    // Build specialization info if any constants are active
+    let spec_map_entries: Vec<vk::SpecializationMapEntry> = (0..8u32)
+        .filter(|i| state.spec_constant_mask & (1 << i) != 0)
+        .map(|i| vk::SpecializationMapEntry {
+            constant_id: i,
+            offset: i * 4,
+            size: 4,
+        })
+        .collect();
+
+    let spec_info = if !spec_map_entries.is_empty() {
+        Some(
+            vk::SpecializationInfo::default()
+                .map_entries(&spec_map_entries)
+                .data(bytemuck::cast_slice(&state.spec_constants)),
+        )
+    } else {
+        None
+    };
+
+    // Re-build stage_cis with specialization info attached
+    let stage_cis: Vec<vk::PipelineShaderStageCreateInfo<'_>> = if let Some(ref spec) = spec_info {
+        shaders
+            .iter()
+            .map(|(module, stage)| {
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(*stage)
+                    .module(*module)
+                    .name(entry_name)
+                    .specialization_info(spec)
+            })
+            .collect()
+    } else {
+        stage_cis
+    };
 
     let pipeline_ci = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stage_cis)
@@ -514,19 +563,23 @@ pub(crate) fn build_dynamic_graphics_pipeline(
         .polygon_mode(state.polygon_mode)
         .cull_mode(state.cull_mode)
         .front_face(state.front_face)
-        .depth_bias_enable(false)
+        .depth_bias_enable(state.depth_bias_enable)
         .line_width(1.0);
 
     let multisample_ci = vk::PipelineMultisampleStateCreateInfo::default()
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1)
-        .sample_shading_enable(false);
+        .rasterization_samples(state.rasterization_samples)
+        .sample_shading_enable(state.sample_shading)
+        .alpha_to_coverage_enable(state.alpha_to_coverage)
+        .alpha_to_one_enable(state.alpha_to_one);
 
     let depth_stencil_ci = vk::PipelineDepthStencilStateCreateInfo::default()
         .depth_test_enable(state.depth_test)
         .depth_write_enable(state.depth_write)
         .depth_compare_op(state.depth_compare)
         .depth_bounds_test_enable(false)
-        .stencil_test_enable(state.stencil_test);
+        .stencil_test_enable(state.stencil_test)
+        .front(state.stencil_front.to_vk())
+        .back(state.stencil_back.to_vk());
 
     let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
         .blend_enable(state.blend_enable)
@@ -545,9 +598,54 @@ pub(crate) fn build_dynamic_graphics_pipeline(
         .logic_op_enable(false)
         .attachments(&blend_attachments);
 
-    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    let mut dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    if state.depth_bias_enable {
+        dynamic_states.push(vk::DynamicState::DEPTH_BIAS);
+    }
+    if state.stencil_test {
+        dynamic_states.push(vk::DynamicState::STENCIL_COMPARE_MASK);
+        dynamic_states.push(vk::DynamicState::STENCIL_WRITE_MASK);
+        dynamic_states.push(vk::DynamicState::STENCIL_REFERENCE);
+    }
+
     let dynamic_state_ci =
         vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+
+    // Build specialization info if any constants are active
+    let spec_map_entries: Vec<vk::SpecializationMapEntry> = (0..8u32)
+        .filter(|i| state.spec_constant_mask & (1 << i) != 0)
+        .map(|i| vk::SpecializationMapEntry {
+            constant_id: i,
+            offset: i * 4,
+            size: 4,
+        })
+        .collect();
+
+    let spec_info = if !spec_map_entries.is_empty() {
+        Some(
+            vk::SpecializationInfo::default()
+                .map_entries(&spec_map_entries)
+                .data(bytemuck::cast_slice(&state.spec_constants)),
+        )
+    } else {
+        None
+    };
+
+    // Re-build stage_cis with specialization info attached
+    let stage_cis: Vec<vk::PipelineShaderStageCreateInfo<'_>> = if let Some(ref spec) = spec_info {
+        shaders
+            .iter()
+            .map(|(module, stage)| {
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(*stage)
+                    .module(*module)
+                    .name(entry_name)
+                    .specialization_info(spec)
+            })
+            .collect()
+    } else {
+        stage_cis
+    };
 
     let mut rendering_ci = vk::PipelineRenderingCreateInfo::default()
         .color_attachment_formats(color_formats)

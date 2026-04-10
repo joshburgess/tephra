@@ -109,6 +109,7 @@ pub struct Context {
     device_properties: vk::PhysicalDeviceProperties,
     device_features: DeviceFeatures,
     debug_utils: Option<ash::ext::debug_utils::Instance>,
+    debug_utils_device: Option<ash::ext::debug_utils::Device>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
     push_descriptor_device: Option<ash::khr::push_descriptor::Device>,
 }
@@ -433,6 +434,12 @@ impl Context {
         };
 
         // Create extension loaders
+        let debug_utils_device = if debug_utils.is_some() {
+            Some(ash::ext::debug_utils::Device::new(&instance, &device))
+        } else {
+            None
+        };
+
         let push_descriptor_device = if has_push_descriptor {
             Some(ash::khr::push_descriptor::Device::new(&instance, &device))
         } else {
@@ -469,6 +476,7 @@ impl Context {
             device_properties,
             device_features,
             debug_utils,
+            debug_utils_device,
             debug_messenger,
             push_descriptor_device,
         })
@@ -616,9 +624,32 @@ impl Context {
         &self.device_features
     }
 
+    /// The debug utils device extension loader, if available.
+    ///
+    /// Present when validation / `VK_EXT_debug_utils` is enabled.
+    pub fn debug_utils_device(&self) -> Option<&ash::ext::debug_utils::Device> {
+        self.debug_utils_device.as_ref()
+    }
+
     /// The push descriptor extension loader, if available.
     pub fn push_descriptor_device(&self) -> Option<&ash::khr::push_descriptor::Device> {
         self.push_descriptor_device.as_ref()
+    }
+
+    /// Set a debug name on a Vulkan object.
+    ///
+    /// No-op if `VK_EXT_debug_utils` is not enabled.
+    pub fn set_name<T: vk::Handle>(&self, handle: T, name: &str) {
+        if let Some(debug_utils) = &self.debug_utils_device {
+            let c_name = std::ffi::CString::new(name).unwrap_or_default();
+            let name_info = vk::DebugUtilsObjectNameInfoEXT::default()
+                .object_handle(handle)
+                .object_name(&c_name);
+            // SAFETY: device and handle are valid, name_info is well-formed.
+            unsafe {
+                let _ = debug_utils.set_debug_utils_object_name(&name_info);
+            }
+        }
     }
 }
 

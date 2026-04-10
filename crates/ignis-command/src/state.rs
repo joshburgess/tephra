@@ -2,6 +2,47 @@
 
 use ash::vk;
 
+/// Stencil operation state for one face.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StencilFaceState {
+    /// Operation on stencil test fail.
+    pub fail_op: vk::StencilOp,
+    /// Operation on stencil pass + depth fail.
+    pub depth_fail_op: vk::StencilOp,
+    /// Operation on both stencil and depth pass.
+    pub pass_op: vk::StencilOp,
+    /// Stencil comparison operator.
+    pub compare_op: vk::CompareOp,
+}
+
+impl Default for StencilFaceState {
+    fn default() -> Self {
+        Self {
+            fail_op: vk::StencilOp::KEEP,
+            depth_fail_op: vk::StencilOp::KEEP,
+            pass_op: vk::StencilOp::KEEP,
+            compare_op: vk::CompareOp::ALWAYS,
+        }
+    }
+}
+
+impl StencilFaceState {
+    /// Convert to Vulkan `StencilOpState`.
+    ///
+    /// Reference, write mask, and compare mask are dynamic state.
+    pub fn to_vk(&self) -> vk::StencilOpState {
+        vk::StencilOpState {
+            fail_op: self.fail_op,
+            pass_op: self.pass_op,
+            depth_fail_op: self.depth_fail_op,
+            compare_op: self.compare_op,
+            compare_mask: 0xFF,
+            write_mask: 0xFF,
+            reference: 0,
+        }
+    }
+}
+
 /// Static pipeline state that contributes to the pipeline hash key.
 ///
 /// All fields that affect `VkGraphicsPipelineCreateInfo` are tracked here.
@@ -25,6 +66,12 @@ pub struct StaticPipelineState {
     pub depth_compare: vk::CompareOp,
     /// Whether stencil testing is enabled.
     pub stencil_test: bool,
+    /// Front-face stencil operations.
+    pub stencil_front: StencilFaceState,
+    /// Back-face stencil operations.
+    pub stencil_back: StencilFaceState,
+    /// Whether depth bias is enabled (constant/clamp/slope are dynamic state).
+    pub depth_bias_enable: bool,
     /// Whether blending is enabled.
     pub blend_enable: bool,
     /// Source color blend factor.
@@ -43,6 +90,18 @@ pub struct StaticPipelineState {
     pub color_write_mask: vk::ColorComponentFlags,
     /// Whether primitive restart is enabled.
     pub primitive_restart: bool,
+    /// Whether alpha-to-coverage multisampling is enabled.
+    pub alpha_to_coverage: bool,
+    /// Whether alpha-to-one multisampling is enabled.
+    pub alpha_to_one: bool,
+    /// Whether sample shading is enabled.
+    pub sample_shading: bool,
+    /// Rasterization sample count.
+    pub rasterization_samples: vk::SampleCountFlags,
+    /// Specialization constant bitmask — which of the 8 slots are active.
+    pub spec_constant_mask: u32,
+    /// Up to 8 specialization constant values (reinterpreted as float/int/bool).
+    pub spec_constants: [u32; 8],
 }
 
 impl Default for StaticPipelineState {
@@ -56,6 +115,9 @@ impl Default for StaticPipelineState {
             depth_write: false,
             depth_compare: vk::CompareOp::LESS_OR_EQUAL,
             stencil_test: false,
+            stencil_front: StencilFaceState::default(),
+            stencil_back: StencilFaceState::default(),
+            depth_bias_enable: false,
             blend_enable: false,
             src_color_blend: vk::BlendFactor::ONE,
             dst_color_blend: vk::BlendFactor::ZERO,
@@ -65,6 +127,12 @@ impl Default for StaticPipelineState {
             alpha_blend_op: vk::BlendOp::ADD,
             color_write_mask: vk::ColorComponentFlags::RGBA,
             primitive_restart: false,
+            alpha_to_coverage: false,
+            alpha_to_one: false,
+            sample_shading: false,
+            rasterization_samples: vk::SampleCountFlags::TYPE_1,
+            spec_constant_mask: 0,
+            spec_constants: [0; 8],
         }
     }
 }

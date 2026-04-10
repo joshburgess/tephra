@@ -204,6 +204,7 @@ impl Eq for DescriptorSetBindings {}
 /// [`MAX_DESCRIPTOR_SETS`] descriptor sets. Each `set_*` call marks the
 /// affected set as dirty. On draw/dispatch, dirty sets are resolved
 /// (hashed, cached, or freshly allocated and written).
+#[derive(Clone)]
 pub struct BindingTable {
     sets: [DescriptorSetBindings; MAX_DESCRIPTOR_SETS],
     dirty_sets: u32,

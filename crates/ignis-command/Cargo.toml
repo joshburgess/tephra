@@ -11,3 +11,4 @@ ash = { workspace = true }
 ignis-core = { workspace = true }
 log = { workspace = true }
 bytemuck = { workspace = true }
+rustc-hash = { workspace = true }

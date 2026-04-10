@@ -180,6 +180,66 @@ impl Device {
             .linear_allocator_pool
             .allocate(&device, allocator, size, alignment)
     }
+
+    /// Query format properties for a given format.
+    pub fn format_properties(&self, format: vk::Format) -> vk::FormatProperties {
+        // SAFETY: physical device is valid.
+        unsafe {
+            self.context
+                .instance()
+                .get_physical_device_format_properties(self.context.physical_device(), format)
+        }
+    }
+
+    /// Query image format properties for a given combination.
+    ///
+    /// Returns `None` if the format/type/tiling/usage combination is unsupported.
+    pub fn image_format_properties(
+        &self,
+        format: vk::Format,
+        image_type: vk::ImageType,
+        tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,
+        flags: vk::ImageCreateFlags,
+    ) -> Option<vk::ImageFormatProperties> {
+        // SAFETY: physical device is valid.
+        unsafe {
+            self.context
+                .instance()
+                .get_physical_device_image_format_properties(
+                    self.context.physical_device(),
+                    format,
+                    image_type,
+                    tiling,
+                    usage,
+                    flags,
+                )
+        }
+        .ok()
+    }
+
+    /// Check whether a format supports the given tiling and usage flags.
+    pub fn is_format_supported(
+        &self,
+        format: vk::Format,
+        tiling: vk::ImageTiling,
+        usage: vk::FormatFeatureFlags,
+    ) -> bool {
+        let props = self.format_properties(format);
+        let features = match tiling {
+            vk::ImageTiling::OPTIMAL => props.optimal_tiling_features,
+            vk::ImageTiling::LINEAR => props.linear_tiling_features,
+            _ => vk::FormatFeatureFlags::empty(),
+        };
+        features.contains(usage)
+    }
+
+    /// Set a debug name on a Vulkan object.
+    ///
+    /// No-op if `VK_EXT_debug_utils` is not enabled.
+    pub fn set_name<T: vk::Handle>(&self, handle: T, name: &str) {
+        self.context.set_name(handle, name);
+    }
 }
 
 impl Drop for Device {

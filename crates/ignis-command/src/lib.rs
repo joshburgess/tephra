@@ -8,4 +8,5 @@
 pub mod barriers;
 pub mod command_buffer;
 pub mod linear_alloc;
+pub mod query_pool;
 pub mod state;
