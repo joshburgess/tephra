@@ -216,9 +216,15 @@ impl FrameContextManager {
             // SAFETY: fence is valid and was previously submitted.
             unsafe {
                 device.wait_for_fences(&[frame.fence], true, u64::MAX)?;
-                device.reset_fences(&[frame.fence])?;
             }
             frame.fence_submitted = false;
+        }
+
+        // Always reset the fence so it's unsignaled for the next queue_submit.
+        // On the first use, the fence was created SIGNALED and needs resetting.
+        // SAFETY: fence is valid; resetting an already-unsignaled fence is a no-op.
+        unsafe {
+            device.reset_fences(&[frame.fence])?;
         }
 
         // Flush deferred deletions now that the GPU is done

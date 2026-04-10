@@ -48,6 +48,8 @@ struct App {
     window: Option<Window>,
     frame: u64,
     // Pipeline resources
+    vert_shader: Option<Shader>,
+    frag_shader: Option<Shader>,
     program: Option<Program>,
     frame_resources: Option<FrameResources>,
 }
@@ -58,6 +60,8 @@ impl App {
             wsi: None,
             window: None,
             frame: 0,
+            vert_shader: None,
+            frag_shader: None,
             program: None,
             frame_resources: None,
         }
@@ -79,9 +83,8 @@ impl App {
         let program = Program::create(device, &[&vert_shader, &frag_shader])
             .expect("failed to create program");
 
-        // We don't destroy shaders here — Program retains the module handles.
-        // In a real app you'd manage shader lifetimes more carefully.
-
+        self.vert_shader = Some(vert_shader);
+        self.frag_shader = Some(frag_shader);
         self.program = Some(program);
 
         // Create frame resources with a null pipeline cache (no disk persistence for this example)
@@ -227,6 +230,16 @@ impl ApplicationHandler for App {
         self.wsi = Some(wsi);
 
         self.init_pipeline();
+
+        // Kick off the first frame
+        self.window.as_ref().unwrap().request_redraw();
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Continuous rendering: request a redraw every time the event loop is idle
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
     }
 
     fn window_event(
@@ -240,12 +253,6 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 if let Some(wsi) = &mut self.wsi {
                     wsi.resize(size.width, size.height);
-                }
-                // Invalidate framebuffer cache on resize
-                if let Some(resources) = &mut self.frame_resources {
-                    if let Some(wsi) = &self.wsi {
-                        resources.framebuffer_cache.reset(wsi.device().raw());
-                    }
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -268,6 +275,17 @@ impl Drop for App {
         if let Some(mut program) = self.program.take() {
             if let Some(wsi) = &self.wsi {
                 program.destroy(wsi.device().raw());
+            }
+        }
+
+        if let Some(mut shader) = self.vert_shader.take() {
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
+            }
+        }
+        if let Some(mut shader) = self.frag_shader.take() {
+            if let Some(wsi) = &self.wsi {
+                shader.destroy(wsi.device().raw());
             }
         }
 

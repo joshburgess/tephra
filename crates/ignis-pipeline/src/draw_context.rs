@@ -58,11 +58,13 @@ impl FrameResources {
     }
 
     /// Reset per-frame caches. Call at the start of each frame.
-    pub fn reset_frame(&mut self, device: &ash::Device) {
+    ///
+    /// Note: Framebuffer cache is NOT reset per-frame — framebuffers are
+    /// long-lived and only need to be invalidated on swapchain recreation.
+    pub fn reset_frame(&mut self, _device: &ash::Device) {
         for cache in &mut self.descriptor_caches {
             cache.reset();
         }
-        self.framebuffer_cache.reset(device);
     }
 
     /// Destroy all Vulkan resources.

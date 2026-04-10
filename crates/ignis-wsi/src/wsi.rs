@@ -9,7 +9,6 @@ use thiserror::Error;
 
 use ignis_core::context::{ContextConfig, ContextError, QueueType};
 use ignis_core::device::{Device, DeviceError};
-use ignis_core::frame_context::FRAME_OVERLAP;
 
 use crate::platform::{SurfaceError, WSIPlatform};
 use crate::swapchain::{Swapchain, SwapchainImage};
@@ -164,12 +163,15 @@ impl WSI {
             vk::SwapchainKHR::null(),
         )?;
 
-        // Create per-frame acquire/release semaphores
+        // Create per-swapchain-image acquire/release semaphores.
+        // We need at least as many as swapchain images to avoid signaling a
+        // semaphore that the presentation engine is still using.
+        let sem_count = swapchain.image_count();
         let semaphore_ci = vk::SemaphoreCreateInfo::default();
-        let mut acquire_semaphores = Vec::with_capacity(FRAME_OVERLAP);
-        let mut release_semaphores = Vec::with_capacity(FRAME_OVERLAP);
+        let mut acquire_semaphores = Vec::with_capacity(sem_count);
+        let mut release_semaphores = Vec::with_capacity(sem_count);
 
-        for _ in 0..FRAME_OVERLAP {
+        for _ in 0..sem_count {
             // SAFETY: device is valid, semaphore_ci is well-formed.
             let acquire = unsafe { device.raw().create_semaphore(&semaphore_ci, None)? };
             let release = unsafe { device.raw().create_semaphore(&semaphore_ci, None)? };
@@ -312,6 +314,32 @@ impl WSI {
             self.height,
         )?;
 
+        // Recreate semaphores if image count changed
+        let new_count = self.swapchain.image_count();
+        if new_count != self.acquire_semaphores.len() {
+            // Destroy old semaphores (GPU is idle from device_wait_idle above)
+            for sem in &self.acquire_semaphores {
+                // SAFETY: device is valid, semaphore is valid, GPU is idle.
+                unsafe { self.device.raw().destroy_semaphore(*sem, None); }
+            }
+            for sem in &self.release_semaphores {
+                // SAFETY: device is valid, semaphore is valid, GPU is idle.
+                unsafe { self.device.raw().destroy_semaphore(*sem, None); }
+            }
+
+            let semaphore_ci = vk::SemaphoreCreateInfo::default();
+            self.acquire_semaphores.clear();
+            self.release_semaphores.clear();
+            for _ in 0..new_count {
+                // SAFETY: device is valid.
+                let acquire = unsafe { self.device.raw().create_semaphore(&semaphore_ci, None)? };
+                let release = unsafe { self.device.raw().create_semaphore(&semaphore_ci, None)? };
+                self.acquire_semaphores.push(acquire);
+                self.release_semaphores.push(release);
+            }
+        }
+
+        self.current_semaphore_index = 0;
         self.swapchain_suboptimal = false;
 
         log::debug!(
