@@ -2,11 +2,9 @@
 
 A [Granite](https://github.com/Themaister/Granite)-inspired mid-level Vulkan abstraction layer for Rust.
 
-## Why "tephra"?
+Vulkan is the volcano — powerful, raw, and explosive. What it ejects are sharp fragments: memory management, synchronization, descriptor sets, pipeline state. In volcanology, that fragmented material is called *tephra*.
 
-In volcanology, *tephra* is the fragmented material ejected during a volcanic eruption — raw, sharp pieces flung from the source. The Vulkan API is similar: powerful but chaotic, with memory management, synchronization, and pipeline state all exposed as sharp fragments you must assemble correctly.
-
-Tephra (the library) catches those fragments mid-air and organizes them into usable pieces — frame contexts, deferred deletion, automatic pipeline compilation, descriptor caching — while remaining fundamentally Vulkan-level. You're still thinking in command buffers, render passes, and barrier transitions, not in materials, meshes, and lights. Structured volcanic debris, not yet compressed into solid rock.
+This library is those fragments organized into something usable — frame contexts, deferred deletion, automatic pipeline compilation, descriptor caching — while remaining fundamentally Vulkan-level. You're still thinking in command buffers, render passes, and barrier transitions, not in materials, meshes, and lights. Structured volcanic debris, not yet compressed into solid rock.
 
 Built on [`ash`](https://crates.io/crates/ash) + [`gpu-allocator`](https://crates.io/crates/gpu-allocator) + [`spirv-reflect`](https://crates.io/crates/spirv-reflect) + [`winit`](https://crates.io/crates/winit).
 
