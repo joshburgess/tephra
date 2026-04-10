@@ -21,6 +21,10 @@ pub struct ImageBarrierInfo {
     pub dst_access: vk::AccessFlags2,
     /// Subresource range to transition.
     pub subresource_range: vk::ImageSubresourceRange,
+    /// Source queue family for ownership transfer (`QUEUE_FAMILY_IGNORED` if not transferring).
+    pub src_queue_family: u32,
+    /// Destination queue family for ownership transfer (`QUEUE_FAMILY_IGNORED` if not transferring).
+    pub dst_queue_family: u32,
 }
 
 impl ImageBarrierInfo {
@@ -48,6 +52,8 @@ impl ImageBarrierInfo {
                 base_array_layer: 0,
                 layer_count: vk::REMAINING_ARRAY_LAYERS,
             },
+            src_queue_family: vk::QUEUE_FAMILY_IGNORED,
+            dst_queue_family: vk::QUEUE_FAMILY_IGNORED,
         }
     }
 
@@ -68,6 +74,8 @@ impl ImageBarrierInfo {
                 base_array_layer: 0,
                 layer_count: 1,
             },
+            src_queue_family: vk::QUEUE_FAMILY_IGNORED,
+            dst_queue_family: vk::QUEUE_FAMILY_IGNORED,
         }
     }
 

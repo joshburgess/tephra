@@ -20,6 +20,7 @@ thiserror = { workspace = true }
 [dev-dependencies]
 env_logger = { workspace = true }
 winit = { workspace = true }
+bytemuck = { workspace = true }
 
 [[example]]
 name = "01_triangle"

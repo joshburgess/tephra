@@ -77,8 +77,8 @@ impl CommandBuffer {
                     .new_layout(b.new_layout)
                     .image(b.image)
                     .subresource_range(b.subresource_range)
-                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .src_queue_family_index(b.src_queue_family)
+                    .dst_queue_family_index(b.dst_queue_family)
             })
             .collect();
 

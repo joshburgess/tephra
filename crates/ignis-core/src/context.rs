@@ -329,9 +329,17 @@ impl Context {
             })
             .collect();
 
-        // Device extensions
-        let mut device_extensions: Vec<*const std::ffi::c_char> =
-            vec![ash::khr::swapchain::NAME.as_ptr()];
+        // Device extensions — only enable VK_KHR_swapchain when the instance
+        // has VK_KHR_surface (i.e., this is a windowed application, not headless).
+        let has_surface = config.required_instance_extensions.iter().any(|&ext| {
+            // SAFETY: the pointers in required_instance_extensions are valid C strings.
+            let name = unsafe { CStr::from_ptr(ext) };
+            name == ash::khr::surface::NAME
+        });
+        let mut device_extensions: Vec<*const std::ffi::c_char> = Vec::new();
+        if has_surface {
+            device_extensions.push(ash::khr::swapchain::NAME.as_ptr());
+        }
 
         #[cfg(target_os = "macos")]
         {

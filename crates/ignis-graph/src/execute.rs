@@ -80,6 +80,8 @@ fn emit_barriers(
                         base_array_layer: 0,
                         layer_count: vk::REMAINING_ARRAY_LAYERS,
                     },
+                    src_queue_family: vk::QUEUE_FAMILY_IGNORED,
+                    dst_queue_family: vk::QUEUE_FAMILY_IGNORED,
                 });
             }
             ResourceInfo::Buffer(_) => {
@@ -135,6 +137,8 @@ fn emit_present_barrier(
             base_array_layer: 0,
             layer_count: 1,
         },
+        src_queue_family: vk::QUEUE_FAMILY_IGNORED,
+        dst_queue_family: vk::QUEUE_FAMILY_IGNORED,
     });
 }
 
