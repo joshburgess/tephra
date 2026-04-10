@@ -118,6 +118,38 @@ impl ImageCreateInfo {
             domain: ImageDomain::Transient,
         }
     }
+
+    // ---- Builder-style setters for chained construction ----
+
+    /// Set the usage flags.
+    pub fn usage(mut self, usage: vk::ImageUsageFlags) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    /// Set the number of mip levels.
+    pub fn mip_levels(mut self, mip_levels: u32) -> Self {
+        self.mip_levels = mip_levels;
+        self
+    }
+
+    /// Set the number of array layers.
+    pub fn array_layers(mut self, array_layers: u32) -> Self {
+        self.array_layers = array_layers;
+        self
+    }
+
+    /// Set the sample count.
+    pub fn samples(mut self, samples: vk::SampleCountFlags) -> Self {
+        self.samples = samples;
+        self
+    }
+
+    /// Set the memory domain.
+    pub fn domain(mut self, domain: ImageDomain) -> Self {
+        self.domain = domain;
+        self
+    }
 }
 
 /// Parameters for creating an image view.

@@ -19,4 +19,5 @@ pub use ignis_pipeline as pipeline;
 pub use ignis_wsi as wsi;
 pub use ignis_graph as graph;
 
+pub mod prelude;
 pub mod renderer;

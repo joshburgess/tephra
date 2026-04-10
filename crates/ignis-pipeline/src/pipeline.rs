@@ -11,6 +11,7 @@ use rustc_hash::{FxHashMap, FxHasher};
 
 use ignis_command::state::StaticPipelineState;
 
+use crate::fossilize::FossilizeRecorder;
 use crate::program::Program;
 
 /// Key for looking up a compiled pipeline (legacy render pass path).
@@ -90,6 +91,7 @@ pub struct PipelineCompiler {
     dynamic_graphics_cache: FxHashMap<u64, vk::Pipeline>,
     compute_cache: FxHashMap<u64, vk::Pipeline>,
     pipeline_cache: vk::PipelineCache,
+    fossilize_recorder: Option<FossilizeRecorder>,
 }
 
 impl PipelineCompiler {
@@ -100,7 +102,21 @@ impl PipelineCompiler {
             dynamic_graphics_cache: FxHashMap::default(),
             compute_cache: FxHashMap::default(),
             pipeline_cache,
+            fossilize_recorder: None,
         }
+    }
+
+    /// Attach a Fossilize recorder for pipeline state serialization.
+    ///
+    /// When set, each newly compiled pipeline's state is recorded for later
+    /// replay to warm up the pipeline cache on subsequent launches.
+    pub fn set_fossilize_recorder(&mut self, recorder: FossilizeRecorder) {
+        self.fossilize_recorder = Some(recorder);
+    }
+
+    /// Access the Fossilize recorder, if attached.
+    pub fn fossilize_recorder(&self) -> Option<&FossilizeRecorder> {
+        self.fossilize_recorder.as_ref()
     }
 
     /// Look up or compile a graphics pipeline.
@@ -146,6 +162,10 @@ impl PipelineCompiler {
             "Compiled graphics pipeline (total cached: {})",
             self.graphics_cache.len() + 1
         );
+
+        if let Some(ref mut recorder) = self.fossilize_recorder {
+            recorder.record_graphics_pipeline(key_hash, key_hash.to_le_bytes().to_vec());
+        }
 
         self.graphics_cache.insert(key_hash, pipeline);
         Ok(pipeline)
@@ -201,6 +221,10 @@ impl PipelineCompiler {
             self.dynamic_graphics_cache.len() + 1
         );
 
+        if let Some(ref mut recorder) = self.fossilize_recorder {
+            recorder.record_graphics_pipeline(key_hash, key_hash.to_le_bytes().to_vec());
+        }
+
         self.dynamic_graphics_cache.insert(key_hash, pipeline);
         Ok(pipeline)
     }
@@ -224,12 +248,24 @@ impl PipelineCompiler {
             self.compute_cache.len() + 1
         );
 
+        if let Some(ref mut recorder) = self.fossilize_recorder {
+            recorder.record_compute_pipeline(key_hash, key_hash.to_le_bytes().to_vec());
+        }
+
         self.compute_cache.insert(key_hash, pipeline);
         Ok(pipeline)
     }
 
     /// Destroy all cached pipelines.
+    ///
+    /// Flushes the Fossilize recorder (if attached) before destroying pipelines.
     pub fn destroy(&mut self, device: &ash::Device) {
+        if let Some(ref recorder) = self.fossilize_recorder {
+            if let Err(e) = recorder.flush() {
+                log::warn!("Failed to flush Fossilize recorder: {e}");
+            }
+        }
+
         for (_, pipeline) in self.graphics_cache.drain() {
             // SAFETY: device is valid, pipeline is valid, GPU is idle.
             unsafe {

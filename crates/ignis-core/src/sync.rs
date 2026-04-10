@@ -175,7 +175,7 @@ impl TimelineSemaphore {
     }
 
     /// Query the current GPU-side timeline value.
-    pub fn get_counter_value(&self, device: &ash::Device) -> Result<u64, vk::Result> {
+    pub fn counter_value(&self, device: &ash::Device) -> Result<u64, vk::Result> {
         // SAFETY: device and semaphore are valid.
         unsafe { device.get_semaphore_counter_value(self.semaphore) }
     }

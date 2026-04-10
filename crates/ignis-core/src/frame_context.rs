@@ -10,6 +10,7 @@ use parking_lot::Mutex;
 
 use crate::context::QueueType;
 use crate::linear_alloc::LinearAllocatorPool;
+use crate::sync::TimelineSemaphore;
 
 /// Default number of frames that can be in flight simultaneously.
 pub const FRAME_OVERLAP: usize = 2;
@@ -119,10 +120,16 @@ impl FrameContext {
 ///
 /// Handles frame advancement, fence synchronization, command pool resets,
 /// and deferred resource deletion.
+///
+/// Optionally uses a timeline semaphore for frame synchronization instead of
+/// per-frame fences. When enabled, submit signals timeline value N, and
+/// `begin_frame` waits on value N - FRAME_OVERLAP.
 pub(crate) struct FrameContextManager {
     frames: Vec<FrameContext>,
     current_index: usize,
     frame_count: u64,
+    /// Optional timeline semaphore for frame pacing (replaces per-frame fences).
+    timeline: Option<TimelineSemaphore>,
 }
 
 impl FrameContextManager {
@@ -191,6 +198,7 @@ impl FrameContextManager {
             frames,
             current_index: 0,
             frame_count: 0,
+            timeline: None,
         })
     }
 
@@ -206,19 +214,31 @@ impl FrameContextManager {
         device: &ash::Device,
         allocator: &Mutex<Option<vma::Allocator>>,
     ) -> Result<(), vk::Result> {
+        let overlap = self.frames.len() as u64;
         self.current_index = (self.current_index + 1) % self.frames.len();
         self.frame_count += 1;
 
-        let frame = &mut self.frames[self.current_index];
-
-        // Wait for the fence from when this frame context was last used
-        if frame.fence_submitted {
-            // SAFETY: fence is valid and was previously submitted.
-            unsafe {
-                device.wait_for_fences(&[frame.fence], true, u64::MAX)?;
+        // Synchronize with GPU: either via timeline semaphore or per-frame fence.
+        if let Some(ref timeline) = self.timeline {
+            // Wait for the timeline to reach the value that was signaled when this
+            // frame context was last used (frame_count - FRAME_OVERLAP).
+            if self.frame_count > overlap {
+                let wait_value = self.frame_count - overlap;
+                timeline.wait(device, wait_value, u64::MAX)?;
             }
-            frame.fence_submitted = false;
+        } else {
+            let frame = &mut self.frames[self.current_index];
+            // Fence-based path (default)
+            if frame.fence_submitted {
+                // SAFETY: fence is valid and was previously submitted.
+                unsafe {
+                    device.wait_for_fences(&[frame.fence], true, u64::MAX)?;
+                }
+                frame.fence_submitted = false;
+            }
         }
+
+        let frame = &mut self.frames[self.current_index];
 
         // Always reset the fence so it's unsignaled for the next queue_submit.
         // On the first use, the fence was created SIGNALED and needs resetting.
@@ -276,6 +296,35 @@ impl FrameContextManager {
         self.frames[self.current_index].deletion_queue.push(deletion);
     }
 
+    /// Enable timeline semaphore-based frame synchronization.
+    ///
+    /// When enabled, `begin_frame` waits on the timeline instead of per-frame
+    /// fences. Submitters should signal the timeline via
+    /// [`timeline_signal_value`](Self::timeline_signal_value) after queue submit.
+    /// The per-frame fence is still maintained for compatibility.
+    pub fn enable_timeline(&mut self, timeline: TimelineSemaphore) {
+        self.timeline = Some(timeline);
+        log::info!("Frame sync: timeline semaphore enabled");
+    }
+
+    /// The timeline semaphore, if enabled.
+    pub fn timeline(&self) -> Option<&TimelineSemaphore> {
+        self.timeline.as_ref()
+    }
+
+    /// The timeline semaphore (mutable), if enabled.
+    #[allow(dead_code)]
+    pub fn timeline_mut(&mut self) -> Option<&mut TimelineSemaphore> {
+        self.timeline.as_mut()
+    }
+
+    /// Get the next timeline value to signal on the current frame's submit.
+    ///
+    /// Returns `None` if timeline sync is not enabled.
+    pub fn timeline_signal_value(&mut self) -> Option<u64> {
+        self.timeline.as_mut().map(|t| t.next_value())
+    }
+
     /// Flush all deletions across all frame contexts. Called during shutdown.
     pub fn flush_all(
         &mut self,
@@ -289,6 +338,10 @@ impl FrameContextManager {
 
     /// Destroy all owned Vulkan objects. Called during shutdown after device_wait_idle.
     pub fn destroy(&mut self, device: &ash::Device, allocator: &Mutex<Option<vma::Allocator>>) {
+        if let Some(ref mut timeline) = self.timeline {
+            timeline.destroy(device);
+        }
+
         let mut alloc_guard = allocator.lock();
         for frame in &mut self.frames {
             // Destroy linear allocator pools

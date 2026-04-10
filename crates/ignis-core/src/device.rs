@@ -9,6 +9,7 @@ use thiserror::Error;
 use crate::context::{Context, ContextConfig, ContextError, QueueType};
 use crate::frame_context::{DeferredDeletion, FrameContextManager, FRAME_OVERLAP};
 use crate::linear_alloc::TransientAllocation;
+use crate::resource_manager::{ResourceHandle, ResourceManager, ResourceState};
 use crate::sampler::{SamplerCache, SamplerCreateInfo, StockSampler};
 use crate::sync::{FencePool, SemaphorePool};
 
@@ -49,6 +50,7 @@ pub struct Device {
     sampler_cache: SamplerCache,
     pub(crate) semaphore_pool: SemaphorePool,
     pub(crate) fence_pool: FencePool,
+    resource_manager: Option<ResourceManager>,
 }
 
 impl Device {
@@ -89,6 +91,7 @@ impl Device {
             sampler_cache,
             semaphore_pool: SemaphorePool::new(),
             fence_pool: FencePool::new(),
+            resource_manager: None,
         })
     }
 
@@ -97,7 +100,17 @@ impl Device {
     pub fn begin_frame(&mut self) -> Result<(), DeviceError> {
         self.frame_manager
             .begin_frame(self.context.device(), self.context.allocator())
-            .map_err(DeviceError::Vulkan)
+            .map_err(DeviceError::Vulkan)?;
+
+        // Log pending resource loads if a resource manager is attached
+        if let Some(ref rm) = self.resource_manager {
+            let pending = rm.pending_resources();
+            if !pending.is_empty() {
+                log::debug!("ResourceManager: {} resources pending load", pending.len());
+            }
+        }
+
+        Ok(())
     }
 
     /// End the current frame.
@@ -151,15 +164,15 @@ impl Device {
     }
 
     /// Look up or create a sampler from a create info.
-    pub fn get_sampler(&mut self, info: &SamplerCreateInfo) -> Result<vk::Sampler, DeviceError> {
+    pub fn sampler(&mut self, info: &SamplerCreateInfo) -> Result<vk::Sampler, DeviceError> {
         self.sampler_cache
             .get_or_create(self.context.device(), info)
             .map_err(DeviceError::Vulkan)
     }
 
     /// Get a pre-created stock sampler.
-    pub fn get_stock_sampler(&self, stock: StockSampler) -> vk::Sampler {
-        self.sampler_cache.get_stock(stock)
+    pub fn stock_sampler(&self, stock: StockSampler) -> vk::Sampler {
+        self.sampler_cache.stock(stock)
     }
 
     /// Allocate transient data from the current frame's linear allocator pool.
@@ -232,6 +245,58 @@ impl Device {
             _ => vk::FormatFeatureFlags::empty(),
         };
         features.contains(usage)
+    }
+
+    /// Enable timeline semaphore-based frame synchronization.
+    ///
+    /// Creates a timeline semaphore and configures the frame context manager to
+    /// use it for frame pacing instead of per-frame fences. Submitters should
+    /// include the timeline semaphore in their signal list.
+    ///
+    /// The per-frame fence is still maintained for use with swapchain operations
+    /// and explicit synchronization.
+    pub fn enable_timeline_sync(&mut self) -> Result<(), DeviceError> {
+        let timeline = crate::sync::TimelineSemaphore::new(self.context.device())
+            .map_err(DeviceError::Vulkan)?;
+        self.frame_manager.enable_timeline(timeline);
+        Ok(())
+    }
+
+    /// The timeline semaphore's raw handle, if timeline sync is enabled.
+    pub fn timeline_semaphore(&self) -> Option<vk::Semaphore> {
+        self.frame_manager.timeline().map(|t| t.raw())
+    }
+
+    /// Advance and return the next timeline signal value for the current frame.
+    ///
+    /// Returns `None` if timeline sync is not enabled.
+    pub fn timeline_signal_value(&mut self) -> Option<u64> {
+        self.frame_manager.timeline_signal_value()
+    }
+
+    /// Attach a resource manager to the device.
+    ///
+    /// The resource manager tracks asynchronous resource loading (textures,
+    /// buffers) and provides fallback views while resources are in flight.
+    pub fn set_resource_manager(&mut self, rm: ResourceManager) {
+        self.resource_manager = Some(rm);
+    }
+
+    /// Access the resource manager, if one is attached.
+    pub fn resource_manager(&self) -> Option<&ResourceManager> {
+        self.resource_manager.as_ref()
+    }
+
+    /// Mutably access the resource manager, if one is attached.
+    pub fn resource_manager_mut(&mut self) -> Option<&mut ResourceManager> {
+        self.resource_manager.as_mut()
+    }
+
+    /// Query the state of a managed resource.
+    ///
+    /// Returns `None` if no resource manager is attached.
+    pub fn resource_state(&self, handle: ResourceHandle) -> Option<ResourceState> {
+        self.resource_manager.as_ref().map(|rm| rm.resource_state(handle))
     }
 
     /// Set a debug name on a Vulkan object.

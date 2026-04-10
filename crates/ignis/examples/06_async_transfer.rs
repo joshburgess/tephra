@@ -346,7 +346,7 @@ impl App {
         wsi.device_mut().destroy_buffer(staging);
 
         self.texture = Some(texture);
-        self.sampler = wsi.device().get_stock_sampler(StockSampler::LinearClamp);
+        self.sampler = wsi.device().stock_sampler(StockSampler::LinearClamp);
     }
 
     fn render(&mut self) {

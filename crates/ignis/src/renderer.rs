@@ -25,7 +25,7 @@ use ignis_pipeline::render_pass::{RenderPassCache, RenderPassInfo};
 /// ```ignore
 /// let mut ctx = PipelineContext::new(device.raw(), Some(Path::new("pipeline_cache.bin")))?;
 ///
-/// let pipeline = ctx.get_graphics_pipeline(
+/// let pipeline = ctx.graphics_pipeline(
 ///     device.raw(), &program, &state, &rp_info, 0, &vertex_layout,
 /// )?;
 ///
@@ -65,7 +65,7 @@ impl PipelineContext {
     /// Automatically resolves the render pass from the given info, then
     /// hashes the full pipeline key for cache lookup.
     #[allow(clippy::too_many_arguments)]
-    pub fn get_graphics_pipeline(
+    pub fn graphics_pipeline(
         &mut self,
         device: &ash::Device,
         program: &Program,
@@ -98,7 +98,7 @@ impl PipelineContext {
     }
 
     /// Look up or compile a compute pipeline.
-    pub fn get_compute_pipeline(
+    pub fn compute_pipeline(
         &mut self,
         device: &ash::Device,
         program: &Program,
@@ -108,8 +108,8 @@ impl PipelineContext {
             .map_err(PipelineContextError::Vulkan)
     }
 
-    /// Get or create a render pass for the given configuration.
-    pub fn get_render_pass(
+    /// Look up or create a render pass for the given configuration.
+    pub fn render_pass(
         &mut self,
         device: &ash::Device,
         info: &RenderPassInfo,

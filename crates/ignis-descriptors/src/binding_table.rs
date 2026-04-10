@@ -345,8 +345,8 @@ impl BindingTable {
         self.dirty_sets = (1 << MAX_DESCRIPTOR_SETS) - 1;
     }
 
-    /// Get the bindings for a descriptor set.
-    pub fn get_set(&self, set: u32) -> &DescriptorSetBindings {
+    /// The bindings for a descriptor set.
+    pub fn set(&self, set: u32) -> &DescriptorSetBindings {
         &self.sets[set as usize]
     }
 

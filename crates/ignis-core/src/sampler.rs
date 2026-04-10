@@ -95,6 +95,77 @@ pub struct SamplerCreateInfo {
     pub border_color: vk::BorderColor,
 }
 
+impl Default for SamplerCreateInfo {
+    /// Default sampler: linear filtering, clamp-to-edge, no anisotropy.
+    fn default() -> Self {
+        Self {
+            mag_filter: vk::Filter::LINEAR,
+            min_filter: vk::Filter::LINEAR,
+            mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+            address_mode_u: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            address_mode_v: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            address_mode_w: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            anisotropy_enable: false,
+            max_anisotropy: 1.0,
+            compare_enable: false,
+            compare_op: vk::CompareOp::NEVER,
+            min_lod: 0.0,
+            max_lod: vk::LOD_CLAMP_NONE,
+            border_color: vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
+        }
+    }
+}
+
+impl SamplerCreateInfo {
+    /// Set magnification and minification filters.
+    pub fn filter(mut self, mag: vk::Filter, min: vk::Filter) -> Self {
+        self.mag_filter = mag;
+        self.min_filter = min;
+        self
+    }
+
+    /// Set the mipmap filtering mode.
+    pub fn mipmap_mode(mut self, mode: vk::SamplerMipmapMode) -> Self {
+        self.mipmap_mode = mode;
+        self
+    }
+
+    /// Set all three address modes at once.
+    pub fn address_mode(mut self, mode: vk::SamplerAddressMode) -> Self {
+        self.address_mode_u = mode;
+        self.address_mode_v = mode;
+        self.address_mode_w = mode;
+        self
+    }
+
+    /// Enable anisotropic filtering with the given maximum level.
+    pub fn anisotropy(mut self, max_anisotropy: f32) -> Self {
+        self.anisotropy_enable = true;
+        self.max_anisotropy = max_anisotropy;
+        self
+    }
+
+    /// Enable comparison mode (e.g., for shadow samplers).
+    pub fn compare(mut self, op: vk::CompareOp) -> Self {
+        self.compare_enable = true;
+        self.compare_op = op;
+        self
+    }
+
+    /// Set the LOD clamp range.
+    pub fn lod_range(mut self, min: f32, max: f32) -> Self {
+        self.min_lod = min;
+        self.max_lod = max;
+        self
+    }
+
+    /// Set the border color for clamp-to-border addressing.
+    pub fn border_color(mut self, color: vk::BorderColor) -> Self {
+        self.border_color = color;
+        self
+    }
+}
+
 impl StockSampler {
     fn to_create_info(self) -> SamplerCreateInfo {
         let (mag, min, mip, addr, compare, compare_op) = match self {
@@ -240,7 +311,7 @@ impl SamplerCache {
     }
 
     /// Get a pre-created stock sampler.
-    pub fn get_stock(&self, stock: StockSampler) -> vk::Sampler {
+    pub fn stock(&self, stock: StockSampler) -> vk::Sampler {
         self.stock_samplers[stock as usize]
     }
 

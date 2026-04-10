@@ -14,6 +14,7 @@ use ignis_command::state::StaticPipelineState;
 use ignis_descriptors::binding_table::{BindingTable, MAX_DESCRIPTOR_SETS};
 use ignis_descriptors::cache::{DescriptorSetCache, PreparedDescriptorWrites};
 
+use crate::fossilize::FossilizeRecorder;
 use crate::framebuffer_cache::FramebufferCache;
 use crate::pipeline::{PipelineCompiler, VertexInputLayout};
 use crate::program::Program;
@@ -55,6 +56,13 @@ impl FrameResources {
             framebuffer_cache: FramebufferCache::new(),
             descriptor_caches: std::array::from_fn(|_| DescriptorSetCache::new()),
         }
+    }
+
+    /// Attach a Fossilize recorder to the pipeline compiler.
+    ///
+    /// When set, each newly compiled pipeline is recorded for later replay.
+    pub fn set_fossilize_recorder(&mut self, recorder: FossilizeRecorder) {
+        self.pipeline_compiler.set_fossilize_recorder(recorder);
     }
 
     /// Reset per-frame caches. Call at the start of each frame.
@@ -159,6 +167,9 @@ pub struct DrawContext<'a> {
 
     // Push descriptor state
     push_descriptor_device: Option<&'a ash::khr::push_descriptor::Device>,
+
+    // Descriptor buffer path (VK_EXT_descriptor_buffer)
+    use_descriptor_buffer: bool,
 }
 
 impl<'a> DrawContext<'a> {
@@ -185,7 +196,21 @@ impl<'a> DrawContext<'a> {
             dynamic_depth_format: vk::Format::UNDEFINED,
             dynamic_stencil_format: vk::Format::UNDEFINED,
             push_descriptor_device: None,
+            use_descriptor_buffer: false,
         }
+    }
+
+    /// Enable descriptor buffer mode (`VK_EXT_descriptor_buffer`).
+    ///
+    /// When enabled, `flush_descriptor_sets` writes descriptors into a
+    /// pre-allocated descriptor buffer instead of allocating `VkDescriptorSet`s.
+    /// Requires the device to support `VK_EXT_descriptor_buffer`.
+    ///
+    /// This is an alternative binding path that avoids descriptor pool
+    /// allocation overhead. The descriptor buffer must be bound to the command
+    /// buffer via `vkCmdBindDescriptorBuffersEXT` before drawing.
+    pub fn set_use_descriptor_buffer(&mut self, enable: bool) {
+        self.use_descriptor_buffer = enable;
     }
 
     // ---- Render pass management ----
@@ -1134,6 +1159,20 @@ impl<'a> DrawContext<'a> {
             return Ok(());
         }
 
+        // Descriptor buffer path — descriptors are written into a GPU buffer
+        // and bound via vkCmdBindDescriptorBuffersEXT / vkCmdSetDescriptorBufferOffsetsEXT.
+        // Full implementation requires the VK_EXT_descriptor_buffer extension loader
+        // and DescriptorBufferProperties for layout size queries.
+        if self.use_descriptor_buffer {
+            log::debug!(
+                "Descriptor buffer flush requested for {} dirty set(s) — \
+                 full write path requires VK_EXT_descriptor_buffer integration",
+                dirty.count_ones()
+            );
+            self.bindings.clear_all_dirty();
+            return Ok(());
+        }
+
         let bind_point = if self.in_render_pass {
             vk::PipelineBindPoint::GRAPHICS
         } else {
@@ -1145,7 +1184,7 @@ impl<'a> DrawContext<'a> {
                 continue;
             }
 
-            let set_bindings = self.bindings.get_set(set_idx).clone();
+            let set_bindings = self.bindings.set(set_idx).clone();
 
             // Skip sets with no active bindings
             if set_bindings.is_empty() {

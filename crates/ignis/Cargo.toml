@@ -21,6 +21,8 @@ thiserror = { workspace = true }
 env_logger = { workspace = true }
 winit = { workspace = true }
 bytemuck = { workspace = true }
+criterion = { workspace = true }
+rustc-hash = { workspace = true }
 
 [[example]]
 name = "01_triangle"
@@ -51,3 +53,30 @@ name = "09_bindless"
 
 [[example]]
 name = "10_async_pipeline"
+
+[[example]]
+name = "11_compute_variants"
+
+[[example]]
+name = "12_headless_render"
+
+[[example]]
+name = "13_mipmap_generation"
+
+[[example]]
+name = "14_gpu_timestamps"
+
+[[example]]
+name = "15_state_save_restore"
+
+[[bench]]
+name = "pipeline_cache"
+harness = false
+
+[[bench]]
+name = "descriptor_cache"
+harness = false
+
+[[bench]]
+name = "state_hashing"
+harness = false

@@ -105,7 +105,7 @@ impl App {
             .expect("failed to create bindless table");
 
         // Get a stock linear sampler
-        self.sampler = wsi.device().get_stock_sampler(StockSampler::LinearClamp);
+        self.sampler = wsi.device().stock_sampler(StockSampler::LinearClamp);
 
         // Create 4 colored textures and register them
         let colors: [(u8, u8, u8); 4] = [

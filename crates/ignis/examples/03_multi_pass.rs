@@ -130,7 +130,7 @@ impl App {
             .expect("offscreen RT");
         self.offscreen_image = Some(offscreen);
 
-        self.sampler = wsi.device().get_stock_sampler(StockSampler::LinearClamp);
+        self.sampler = wsi.device().stock_sampler(StockSampler::LinearClamp);
 
         log::info!(
             "Multi-pass initialized: {}x{} offscreen RT, format={:?}",

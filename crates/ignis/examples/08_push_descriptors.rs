@@ -231,7 +231,7 @@ impl App {
             .expect("failed to create texture");
         self.texture = Some(texture);
 
-        self.sampler = wsi.device().get_stock_sampler(StockSampler::LinearClamp);
+        self.sampler = wsi.device().stock_sampler(StockSampler::LinearClamp);
 
         log::info!(
             "Push descriptor resources initialized: {}x{} checkerboard, set 0 = push descriptors",

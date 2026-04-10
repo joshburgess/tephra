@@ -266,7 +266,7 @@ impl App {
         self.texture = Some(texture);
 
         // -- Sampler --
-        self.sampler = wsi.device().get_stock_sampler(StockSampler::LinearClamp);
+        self.sampler = wsi.device().stock_sampler(StockSampler::LinearClamp);
 
         log::info!(
             "Resources initialized: shaders, buffers, {}x{} checkerboard texture",
