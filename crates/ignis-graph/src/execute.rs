@@ -1,35 +1,58 @@
 //! Runtime execution of a compiled render graph.
 //!
-//! Records barriers and invokes pass callbacks into a
-//! [`CommandBuffer`](ignis_command::command_buffer::CommandBuffer).
+//! Records barriers, manages dynamic rendering state, and invokes pass
+//! callbacks into a [`CommandBuffer`](ignis_command::command_buffer::CommandBuffer).
 
 use ash::vk;
 use ignis_command::barriers::ImageBarrierInfo;
 use ignis_command::command_buffer::CommandBuffer;
 
+use crate::allocate::PhysicalResources;
 use crate::compile::{access_info, CompiledGraph, ResourceBarrier};
-use crate::pass::AccessType;
+use crate::pass::{AccessType, PassDeclaration};
 use crate::resource::{ResourceDeclaration, ResourceInfo};
 
 /// Records a compiled render graph into a command buffer.
 ///
-/// The caller is responsible for allocating physical images and providing
-/// them via the `images` slice (indexed by resource handle). Buffer
-/// resources should have `vk::Image::null()` in their slot.
+/// Uses [`PhysicalResources`] for physical image handles and views.
+/// Graphics passes are automatically wrapped in dynamic rendering
+/// (Vulkan 1.3 `vkCmdBeginRendering`/`vkCmdEndRendering`).
 pub struct GraphExecutor;
 
 impl GraphExecutor {
     /// Record the full graph execution.
     ///
-    /// For each step in execution order: emits pre-barriers, then invokes
-    /// the pass callback. After all passes, emits a final barrier to
-    /// transition the backbuffer to `PRESENT_SRC_KHR`.
-    pub fn record(graph: &CompiledGraph, cmd: &mut CommandBuffer, images: &[vk::Image]) {
+    /// For each step in execution order:
+    /// 1. Emits pre-barriers for resource transitions
+    /// 2. Begins dynamic rendering for graphics passes (auto-configured from resource accesses)
+    /// 3. Invokes the pass callback
+    /// 4. Ends dynamic rendering
+    ///
+    /// After all passes, emits a final barrier to transition the backbuffer
+    /// to `PRESENT_SRC_KHR`.
+    pub fn record(
+        graph: &CompiledGraph,
+        cmd: &mut CommandBuffer,
+        resources: &PhysicalResources,
+    ) {
+        let images = resources.images();
+
         for (step, &pass_idx) in graph.pass_order.iter().enumerate() {
             emit_barriers(cmd, &graph.barriers[step], &graph.resources, images);
 
-            if let Some(ref callback) = graph.passes[pass_idx].callback {
+            let pass = &graph.passes[pass_idx];
+
+            if !pass.is_compute {
+                begin_pass_rendering(cmd, pass, resources);
+            }
+
+            if let Some(ref callback) = pass.callback {
                 callback.build_render_pass(cmd);
+            }
+
+            if !pass.is_compute {
+                // SAFETY: device is valid, rendering was begun.
+                cmd.end_rendering();
             }
         }
 
@@ -38,6 +61,137 @@ impl GraphExecutor {
             emit_present_barrier(graph, cmd, bb, images);
         }
     }
+}
+
+/// Build and begin dynamic rendering for a graphics pass.
+///
+/// Inspects the pass's resource accesses to determine color and depth/stencil
+/// attachments, then calls `cmd_begin_rendering` with appropriate load/store ops.
+/// Clear values are sourced from the pass callback (if present), falling back
+/// to black for color and 1.0/0 for depth/stencil.
+fn begin_pass_rendering(
+    cmd: &mut CommandBuffer,
+    pass: &PassDeclaration,
+    resources: &PhysicalResources,
+) {
+    let mut color_attachments: Vec<vk::RenderingAttachmentInfo<'_>> = Vec::new();
+    let mut depth_attachment: Option<vk::RenderingAttachmentInfo<'_>> = None;
+    let mut stencil_attachment: Option<vk::RenderingAttachmentInfo<'_>> = None;
+    let mut render_extent = vk::Extent2D { width: 0, height: 0 };
+    let mut color_index: usize = 0;
+
+    let views = resources.views();
+    let extents = resources.extents();
+    let formats = resources.formats();
+    let callback = pass.callback.as_deref();
+
+    for access in &pass.accesses {
+        let idx = access.resource.index as usize;
+        let view = views[idx];
+        let extent = extents[idx];
+
+        match access.access_type {
+            AccessType::ColorOutput => {
+                render_extent = max_extent(render_extent, extent);
+                let clear_color = callback
+                    .map(|cb| cb.clear_color(color_index))
+                    .unwrap_or(vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    });
+                color_index += 1;
+                color_attachments.push(
+                    vk::RenderingAttachmentInfo::default()
+                        .image_view(view)
+                        .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .load_op(vk::AttachmentLoadOp::CLEAR)
+                        .store_op(vk::AttachmentStoreOp::STORE)
+                        .clear_value(vk::ClearValue { color: clear_color }),
+                );
+            }
+            AccessType::ColorInput => {
+                render_extent = max_extent(render_extent, extent);
+                color_attachments.push(
+                    vk::RenderingAttachmentInfo::default()
+                        .image_view(view)
+                        .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .load_op(vk::AttachmentLoadOp::LOAD)
+                        .store_op(vk::AttachmentStoreOp::STORE),
+                );
+            }
+            AccessType::DepthStencilOutput => {
+                render_extent = max_extent(render_extent, extent);
+                let format = formats[idx];
+                let clear_ds = callback
+                    .map(|cb| cb.clear_depth_stencil())
+                    .unwrap_or(vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    });
+                let attachment = vk::RenderingAttachmentInfo::default()
+                    .image_view(view)
+                    .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .clear_value(vk::ClearValue {
+                        depth_stencil: clear_ds,
+                    });
+                depth_attachment = Some(attachment);
+                if has_stencil_component(format) {
+                    stencil_attachment = Some(attachment);
+                }
+            }
+            AccessType::DepthStencilInput => {
+                render_extent = max_extent(render_extent, extent);
+                let format = formats[idx];
+                let attachment = vk::RenderingAttachmentInfo::default()
+                    .image_view(view)
+                    .image_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::LOAD)
+                    .store_op(vk::AttachmentStoreOp::NONE);
+                depth_attachment = Some(attachment);
+                if has_stencil_component(format) {
+                    stencil_attachment = Some(attachment);
+                }
+            }
+            // Texture, storage, and attachment inputs don't produce rendering attachments.
+            _ => {}
+        }
+    }
+
+    let mut rendering_info = vk::RenderingInfo::default()
+        .render_area(vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: render_extent,
+        })
+        .layer_count(1)
+        .color_attachments(&color_attachments);
+
+    if let Some(ref depth) = depth_attachment {
+        rendering_info = rendering_info.depth_attachment(depth);
+    }
+    if let Some(ref stencil) = stencil_attachment {
+        rendering_info = rendering_info.stencil_attachment(stencil);
+    }
+
+    // SAFETY: device is valid, rendering_info is well-formed.
+    cmd.begin_rendering(&rendering_info);
+}
+
+fn max_extent(a: vk::Extent2D, b: vk::Extent2D) -> vk::Extent2D {
+    vk::Extent2D {
+        width: a.width.max(b.width),
+        height: a.height.max(b.height),
+    }
+}
+
+fn has_stencil_component(format: vk::Format) -> bool {
+    matches!(
+        format,
+        vk::Format::D16_UNORM_S8_UINT
+            | vk::Format::D24_UNORM_S8_UINT
+            | vk::Format::D32_SFLOAT_S8_UINT
+            | vk::Format::S8_UINT
+    )
 }
 
 fn emit_barriers(

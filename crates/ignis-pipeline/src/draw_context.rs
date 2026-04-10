@@ -12,12 +12,12 @@ use thiserror::Error;
 use ignis_command::command_buffer::CommandBuffer;
 use ignis_command::state::StaticPipelineState;
 use ignis_descriptors::binding_table::{BindingTable, MAX_DESCRIPTOR_SETS};
-use ignis_descriptors::cache::DescriptorSetCache;
+use ignis_descriptors::cache::{DescriptorSetCache, PreparedDescriptorWrites};
 
 use crate::framebuffer_cache::FramebufferCache;
 use crate::pipeline::{PipelineCompiler, VertexInputLayout};
 use crate::program::Program;
-use crate::render_pass::{RenderPassCache, RenderPassInfo};
+use crate::render_pass::{AttachmentLoadOp, AttachmentStoreOp, RenderPassCache, RenderPassInfo};
 
 /// Errors from draw context operations.
 #[derive(Debug, Error)]
@@ -76,6 +76,24 @@ impl FrameResources {
     }
 }
 
+/// Attachment description for dynamic rendering.
+///
+/// Used with [`DrawContext::begin_rendering`] to specify color and depth/stencil
+/// attachments without creating a `VkRenderPass` or `VkFramebuffer`.
+#[derive(Clone)]
+pub struct RenderingAttachment {
+    /// Image view for this attachment.
+    pub view: vk::ImageView,
+    /// Format of this attachment (used for pipeline key).
+    pub format: vk::Format,
+    /// Load operation at the start of rendering.
+    pub load_op: AttachmentLoadOp,
+    /// Store operation at the end of rendering.
+    pub store_op: AttachmentStoreOp,
+    /// Clear value (used when load_op is Clear).
+    pub clear_value: vk::ClearValue,
+}
+
 /// High-level draw context integrating command buffers, descriptors, and pipelines.
 ///
 /// Wraps a [`CommandBuffer`] and provides Granite-style convenience: set your
@@ -109,6 +127,15 @@ pub struct DrawContext<'a> {
     current_render_pass: vk::RenderPass,
     current_render_pass_hash: u64,
     current_subpass: u32,
+
+    // Dynamic rendering state
+    use_dynamic_rendering: bool,
+    dynamic_color_formats: Vec<vk::Format>,
+    dynamic_depth_format: vk::Format,
+    dynamic_stencil_format: vk::Format,
+
+    // Push descriptor state
+    push_descriptor_device: Option<&'a ash::khr::push_descriptor::Device>,
 }
 
 impl<'a> DrawContext<'a> {
@@ -130,6 +157,11 @@ impl<'a> DrawContext<'a> {
             current_render_pass: vk::RenderPass::null(),
             current_render_pass_hash: 0,
             current_subpass: 0,
+            use_dynamic_rendering: false,
+            dynamic_color_formats: Vec::new(),
+            dynamic_depth_format: vk::Format::UNDEFINED,
+            dynamic_stencil_format: vk::Format::UNDEFINED,
+            push_descriptor_device: None,
         }
     }
 
@@ -194,10 +226,152 @@ impl<'a> DrawContext<'a> {
 
     /// End the current render pass.
     pub fn end_render_pass(&mut self) {
-        if self.in_render_pass {
+        if self.in_render_pass && !self.use_dynamic_rendering {
             self.cmd.end_render_pass();
             self.in_render_pass = false;
             self.current_render_pass = vk::RenderPass::null();
+        }
+    }
+
+    // ---- Dynamic rendering (Vulkan 1.3 / VK_KHR_dynamic_rendering) ----
+
+    /// Begin dynamic rendering without a `VkRenderPass` or `VkFramebuffer`.
+    ///
+    /// This is the modern alternative to [`begin_render_pass`](Self::begin_render_pass).
+    /// Requires the device to support `VK_KHR_dynamic_rendering` or Vulkan 1.3.
+    ///
+    /// Attachment formats are extracted from the provided attachments and used
+    /// for pipeline key hashing (via `VkPipelineRenderingCreateInfo`).
+    pub fn begin_rendering(
+        &mut self,
+        extent: vk::Extent2D,
+        color_attachments: &[RenderingAttachment],
+        depth_attachment: Option<&RenderingAttachment>,
+    ) -> Result<(), DrawError> {
+        // Build Vulkan color attachment infos
+        let vk_color_attachments: Vec<vk::RenderingAttachmentInfo<'_>> = color_attachments
+            .iter()
+            .map(|a| {
+                let mut info = vk::RenderingAttachmentInfo::default()
+                    .image_view(a.view)
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .load_op(a.load_op.into())
+                    .store_op(a.store_op.into());
+                if a.load_op == AttachmentLoadOp::Clear {
+                    info = info.clear_value(a.clear_value);
+                }
+                info
+            })
+            .collect();
+
+        // Build depth attachment info
+        let vk_depth_attachment;
+        let vk_stencil_attachment;
+
+        if let Some(depth) = depth_attachment {
+            let is_stencil_format = matches!(
+                depth.format,
+                vk::Format::D16_UNORM_S8_UINT
+                    | vk::Format::D24_UNORM_S8_UINT
+                    | vk::Format::D32_SFLOAT_S8_UINT
+            );
+
+            let mut info = vk::RenderingAttachmentInfo::default()
+                .image_view(depth.view)
+                .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                .load_op(depth.load_op.into())
+                .store_op(depth.store_op.into());
+            if depth.load_op == AttachmentLoadOp::Clear {
+                info = info.clear_value(depth.clear_value);
+            }
+            vk_depth_attachment = Some(info);
+
+            // If the depth format includes stencil, use the same view for stencil
+            if is_stencil_format {
+                let mut stencil_info = vk::RenderingAttachmentInfo::default()
+                    .image_view(depth.view)
+                    .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                    .load_op(depth.load_op.into())
+                    .store_op(depth.store_op.into());
+                if depth.load_op == AttachmentLoadOp::Clear {
+                    stencil_info = stencil_info.clear_value(depth.clear_value);
+                }
+                vk_stencil_attachment = Some(stencil_info);
+            } else {
+                vk_stencil_attachment = None;
+            }
+        } else {
+            vk_depth_attachment = None;
+            vk_stencil_attachment = None;
+        }
+
+        let render_area = vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent,
+        };
+
+        let mut rendering_info = vk::RenderingInfo::default()
+            .render_area(render_area)
+            .layer_count(1)
+            .color_attachments(&vk_color_attachments);
+
+        if let Some(ref depth) = vk_depth_attachment {
+            rendering_info = rendering_info.depth_attachment(depth);
+        }
+        if let Some(ref stencil) = vk_stencil_attachment {
+            rendering_info = rendering_info.stencil_attachment(stencil);
+        }
+
+        self.cmd.begin_rendering(&rendering_info);
+
+        // Set viewport and scissor to match the render area
+        self.cmd.set_viewport(
+            0,
+            &[vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: extent.width as f32,
+                height: extent.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            }],
+        );
+        self.cmd.set_scissor(0, &[render_area]);
+
+        // Store format info for pipeline key
+        self.dynamic_color_formats = color_attachments.iter().map(|a| a.format).collect();
+        self.dynamic_depth_format = depth_attachment
+            .map(|a| a.format)
+            .unwrap_or(vk::Format::UNDEFINED);
+        self.dynamic_stencil_format = if depth_attachment.is_some_and(|a| {
+            matches!(
+                a.format,
+                vk::Format::D16_UNORM_S8_UINT
+                    | vk::Format::D24_UNORM_S8_UINT
+                    | vk::Format::D32_SFLOAT_S8_UINT
+            )
+        }) {
+            self.dynamic_depth_format
+        } else {
+            vk::Format::UNDEFINED
+        };
+
+        self.in_render_pass = true;
+        self.use_dynamic_rendering = true;
+        self.bound_pipeline = vk::Pipeline::null();
+
+        Ok(())
+    }
+
+    /// End the current dynamic rendering scope.
+    pub fn end_rendering(&mut self) {
+        if self.in_render_pass && self.use_dynamic_rendering {
+            self.cmd.end_rendering();
+            self.in_render_pass = false;
+            self.use_dynamic_rendering = false;
+            self.dynamic_color_formats.clear();
+            self.dynamic_depth_format = vk::Format::UNDEFINED;
+            self.dynamic_stencil_format = vk::Format::UNDEFINED;
         }
     }
 
@@ -438,6 +612,81 @@ impl<'a> DrawContext<'a> {
         Ok(())
     }
 
+    /// Issue an indirect draw call.
+    ///
+    /// Automatically resolves the pipeline and flushes descriptor sets.
+    pub fn draw_indirect(
+        &mut self,
+        program: &mut Program,
+        vertex_layout: &VertexInputLayout,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<(), DrawError> {
+        if !self.in_render_pass {
+            return Err(DrawError::NotInRenderPass);
+        }
+
+        self.resolve_graphics_pipeline(program, vertex_layout)?;
+        self.flush_descriptor_sets(program)?;
+
+        self.cmd.draw_indirect(buffer, offset, draw_count, stride);
+        Ok(())
+    }
+
+    /// Issue an indirect indexed draw call.
+    ///
+    /// Automatically resolves the pipeline and flushes descriptor sets.
+    pub fn draw_indexed_indirect(
+        &mut self,
+        program: &mut Program,
+        vertex_layout: &VertexInputLayout,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<(), DrawError> {
+        if !self.in_render_pass {
+            return Err(DrawError::NotInRenderPass);
+        }
+
+        self.resolve_graphics_pipeline(program, vertex_layout)?;
+        self.flush_descriptor_sets(program)?;
+
+        self.cmd
+            .draw_indexed_indirect(buffer, offset, draw_count, stride);
+        Ok(())
+    }
+
+    /// Issue an indirect compute dispatch.
+    ///
+    /// Automatically resolves the compute pipeline and flushes descriptor sets.
+    /// Must NOT be called inside a render pass.
+    pub fn dispatch_indirect(
+        &mut self,
+        program: &mut Program,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+    ) -> Result<(), DrawError> {
+        let pipeline = self
+            .resources
+            .pipeline_compiler
+            .get_or_compile_compute(self.device, program)?;
+
+        if pipeline != self.bound_pipeline {
+            self.cmd
+                .bind_pipeline(vk::PipelineBindPoint::COMPUTE, pipeline);
+            self.bound_pipeline = pipeline;
+            self.bound_program_hash = program.layout_hash();
+            self.bindings.mark_all_dirty();
+        }
+
+        self.flush_descriptor_sets(program)?;
+        self.cmd.dispatch_indirect(buffer, offset);
+        Ok(())
+    }
+
     /// Issue a compute dispatch.
     ///
     /// Automatically resolves the compute pipeline and flushes descriptor sets.
@@ -479,6 +728,41 @@ impl<'a> DrawContext<'a> {
         self.cmd
     }
 
+    /// Set the push descriptor extension loader.
+    ///
+    /// Required for programs created with [`Program::create_with_push_descriptors`].
+    /// The loader can be obtained from [`Context::push_descriptor_device()`](ignis_core::context::Context::push_descriptor_device).
+    pub fn set_push_descriptor_device(
+        &mut self,
+        device: &'a ash::khr::push_descriptor::Device,
+    ) {
+        self.push_descriptor_device = Some(device);
+    }
+
+    /// Bind a persistent bindless descriptor set at the given set index.
+    ///
+    /// This bypasses the normal descriptor binding/caching path. The bindless
+    /// set is bound directly to the command buffer and remains valid for all
+    /// subsequent draw/dispatch calls using the same pipeline layout.
+    ///
+    /// Typically bound at a high set index (e.g., set 3) to avoid conflicts
+    /// with per-draw descriptor sets at lower indices.
+    pub fn bind_bindless_set(
+        &mut self,
+        pipeline_layout: vk::PipelineLayout,
+        set_index: u32,
+        bindless_set: vk::DescriptorSet,
+    ) {
+        let bind_point = if self.in_render_pass {
+            vk::PipelineBindPoint::GRAPHICS
+        } else {
+            vk::PipelineBindPoint::COMPUTE
+        };
+
+        self.cmd
+            .bind_descriptor_sets(bind_point, pipeline_layout, set_index, &[bindless_set], &[]);
+    }
+
     // ---- Internal ----
 
     fn resolve_graphics_pipeline(
@@ -486,15 +770,29 @@ impl<'a> DrawContext<'a> {
         program: &mut Program,
         vertex_layout: &VertexInputLayout,
     ) -> Result<(), DrawError> {
-        let pipeline = self.resources.pipeline_compiler.get_or_compile_graphics(
-            self.device,
-            program,
-            &self.state,
-            self.current_render_pass,
-            self.current_render_pass_hash,
-            self.current_subpass,
-            vertex_layout,
-        )?;
+        let pipeline = if self.use_dynamic_rendering {
+            self.resources
+                .pipeline_compiler
+                .get_or_compile_graphics_dynamic(
+                    self.device,
+                    program,
+                    &self.state,
+                    &self.dynamic_color_formats,
+                    self.dynamic_depth_format,
+                    self.dynamic_stencil_format,
+                    vertex_layout,
+                )?
+        } else {
+            self.resources.pipeline_compiler.get_or_compile_graphics(
+                self.device,
+                program,
+                &self.state,
+                self.current_render_pass,
+                self.current_render_pass_hash,
+                self.current_subpass,
+                vertex_layout,
+            )?
+        };
 
         if pipeline != self.bound_pipeline {
             self.cmd
@@ -538,6 +836,29 @@ impl<'a> DrawContext<'a> {
             if set_bindings.is_empty() {
                 self.bindings.clear_dirty(set_idx);
                 continue;
+            }
+
+            // Push descriptor path: write descriptors inline on the command buffer
+            if program.is_push_descriptor_set(set_idx) {
+                if let Some(push_device) = self.push_descriptor_device {
+                    let prepared = PreparedDescriptorWrites::from_bindings(&set_bindings);
+                    if !prepared.is_empty() {
+                        let writes = prepared.build_writes(vk::DescriptorSet::null());
+                        // SAFETY: command buffer, pipeline layout, and descriptor data are valid.
+                        unsafe {
+                            push_device.cmd_push_descriptor_set(
+                                self.cmd.raw(),
+                                bind_point,
+                                program.pipeline_layout(),
+                                set_idx,
+                                &writes,
+                            );
+                        }
+                    }
+                    self.bindings.clear_dirty(set_idx);
+                    continue;
+                }
+                // Fall through to regular path if push descriptor device not set
             }
 
             let Some(allocator) = program.set_allocator_mut(set_idx as usize) else {

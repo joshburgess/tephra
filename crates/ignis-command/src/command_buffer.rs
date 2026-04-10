@@ -207,6 +207,86 @@ impl CommandBuffer {
         }
     }
 
+    // ---- Indirect draw commands ----
+
+    /// Issue an indirect draw call.
+    pub fn draw_indirect(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        // SAFETY: command buffer and buffer are valid, inside a render pass.
+        unsafe {
+            self.device
+                .cmd_draw_indirect(self.raw, buffer, offset, draw_count, stride);
+        }
+    }
+
+    /// Issue an indirect indexed draw call.
+    pub fn draw_indexed_indirect(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        // SAFETY: command buffer and buffer are valid, inside a render pass.
+        unsafe {
+            self.device
+                .cmd_draw_indexed_indirect(self.raw, buffer, offset, draw_count, stride);
+        }
+    }
+
+    /// Issue an indirect draw call with a GPU-driven draw count (Vulkan 1.2).
+    pub fn draw_indirect_count(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        count_buffer: vk::Buffer,
+        count_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        // SAFETY: command buffer and buffers are valid, inside a render pass.
+        unsafe {
+            self.device.cmd_draw_indirect_count(
+                self.raw,
+                buffer,
+                offset,
+                count_buffer,
+                count_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+    }
+
+    /// Issue an indirect indexed draw call with a GPU-driven draw count (Vulkan 1.2).
+    pub fn draw_indexed_indirect_count(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        count_buffer: vk::Buffer,
+        count_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        // SAFETY: command buffer and buffers are valid, inside a render pass.
+        unsafe {
+            self.device.cmd_draw_indexed_indirect_count(
+                self.raw,
+                buffer,
+                offset,
+                count_buffer,
+                count_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+    }
+
     // ---- Compute ----
 
     /// Dispatch a compute shader.
@@ -220,6 +300,15 @@ impl CommandBuffer {
         unsafe {
             self.device
                 .cmd_dispatch(self.raw, group_count_x, group_count_y, group_count_z);
+        }
+    }
+
+    /// Dispatch a compute shader indirectly from a buffer.
+    pub fn dispatch_indirect(&mut self, buffer: vk::Buffer, offset: vk::DeviceSize) {
+        // SAFETY: command buffer and buffer are valid, not inside a render pass.
+        unsafe {
+            self.device
+                .cmd_dispatch_indirect(self.raw, buffer, offset);
         }
     }
 
@@ -254,6 +343,27 @@ impl CommandBuffer {
         // SAFETY: command buffer is valid and inside a render pass.
         unsafe {
             self.device.cmd_end_render_pass(self.raw);
+        }
+    }
+
+    // ---- Dynamic rendering (Vulkan 1.3 / VK_KHR_dynamic_rendering) ----
+
+    /// Begin dynamic rendering with the given rendering info.
+    ///
+    /// This replaces the traditional `VkRenderPass` + `VkFramebuffer` approach.
+    /// Requires `VK_KHR_dynamic_rendering` or Vulkan 1.3.
+    pub fn begin_rendering(&mut self, rendering_info: &vk::RenderingInfo<'_>) {
+        // SAFETY: command buffer is valid, rendering info is well-formed.
+        unsafe {
+            self.device.cmd_begin_rendering(self.raw, rendering_info);
+        }
+    }
+
+    /// End the current dynamic rendering scope.
+    pub fn end_rendering(&mut self) {
+        // SAFETY: command buffer is valid and inside a dynamic rendering scope.
+        unsafe {
+            self.device.cmd_end_rendering(self.raw);
         }
     }
 

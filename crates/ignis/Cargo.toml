@@ -39,3 +39,15 @@ name = "05_compute"
 
 [[example]]
 name = "06_async_transfer"
+
+[[example]]
+name = "07_dynamic_rendering"
+
+[[example]]
+name = "08_push_descriptors"
+
+[[example]]
+name = "09_bindless"
+
+[[example]]
+name = "10_async_pipeline"

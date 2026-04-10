@@ -4,6 +4,7 @@
 //! auto-generates pipeline layouts, and compiles pipelines on demand
 //! with hash-and-cache.
 
+pub mod async_pipeline;
 pub mod draw_context;
 pub mod framebuffer_cache;
 pub mod pipeline;

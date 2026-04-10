@@ -1,124 +1,247 @@
-//! Phase 6 validation: render graph compilation and execution.
+//! Phase 6 validation: render graph execution with physical resource allocation.
 //!
-//! Builds a multi-pass render graph with shadow mapping, main color pass,
-//! and post-processing — then compiles it to verify automatic dependency
-//! analysis, topological sorting, barrier placement, and dead pass culling.
+//! Builds a 2-pass render graph:
+//!   1. An offscreen pass that clears a color attachment to a cycling color
+//!   2. A final pass that copies from the offscreen target to the backbuffer
+//!
+//! The graph compiler orders passes and places barriers automatically.
+//! `PhysicalResources::allocate` creates Vulkan images for all virtual resources.
+//! `GraphExecutor::record` handles dynamic rendering (begin/end), barriers, and
+//! the final present transition.
 
 use ash::vk;
+use winit::application::ApplicationHandler;
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::window::{Window, WindowId};
 
+use ignis::command::command_buffer::{CommandBuffer, CommandBufferType};
+use ignis::core::context::QueueType;
 use ignis::graph::{
-    AttachmentInfo, BufferInfo, CompiledGraph, RenderGraph, SizeClass,
+    AttachmentInfo, CompiledGraph, GraphExecutor, PhysicalResources, RenderGraph,
+    RenderPassCallback,
 };
-use ignis::graph::alias::find_alias_groups;
-use ignis::graph::subpass_merge::find_merge_groups;
+use ignis::wsi::platform::WinitPlatform;
+use ignis::wsi::wsi::{WSI, WSIConfig};
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
+/// Pass callback that clears to a cycling color based on a shared frame counter.
+struct ClearPass {
+    frame_counter: Arc<AtomicU64>,
+}
+
+impl RenderPassCallback for ClearPass {
+    fn build_render_pass(&self, _cmd: &mut CommandBuffer) {
+        // The executor begins dynamic rendering with CLEAR load op.
+        // No draw commands needed — the clear color does the work.
+    }
+
+    fn clear_color(&self, _attachment_index: usize) -> vk::ClearColorValue {
+        let t = self.frame_counter.load(Ordering::Relaxed) as f32 * 0.01;
+        vk::ClearColorValue {
+            float32: [
+                (t.sin() * 0.5 + 0.5).clamp(0.0, 1.0),
+                (t.cos() * 0.5 + 0.5).clamp(0.0, 1.0),
+                ((t * 0.7).sin() * 0.5 + 0.5).clamp(0.0, 1.0),
+                1.0,
+            ],
+        }
+    }
+}
+
+struct App {
+    wsi: Option<WSI>,
+    window: Option<Window>,
+    frame_counter: Arc<AtomicU64>,
+    compiled: Option<CompiledGraph>,
+    physical: Option<PhysicalResources>,
+}
+
+impl App {
+    fn new() -> Self {
+        Self {
+            wsi: None,
+            window: None,
+            frame_counter: Arc::new(AtomicU64::new(0)),
+            compiled: None,
+            physical: None,
+        }
+    }
+
+    fn build_graph(&mut self) {
+        let wsi = self.wsi.as_mut().unwrap();
+        let extent = wsi.swapchain_extent();
+        let format = wsi.swapchain_format();
+
+        let mut graph = RenderGraph::new();
+
+        let counter = self.frame_counter.clone();
+
+        // Pass 1: offscreen clear to cycling color (writes intermediate target)
+        let mut offscreen = graph.add_pass("offscreen_clear");
+        offscreen.set_render_callback(Box::new(ClearPass {
+            frame_counter: counter.clone(),
+        }));
+        let intermediate = offscreen.add_color_output(
+            "intermediate",
+            AttachmentInfo::swapchain_relative(vk::Format::R8G8B8A8_UNORM, 1.0),
+        );
+
+        // Pass 2: final pass reads intermediate as texture, writes backbuffer.
+        // The cycling color comes from the shared frame counter.
+        // The texture input dependency ensures correct barrier placement.
+        let mut final_pass = graph.add_pass("final_composite");
+        final_pass.set_render_callback(Box::new(ClearPass {
+            frame_counter: counter,
+        }));
+        final_pass.add_texture_input(intermediate);
+        let backbuffer = final_pass.add_color_output(
+            "backbuffer",
+            AttachmentInfo::swapchain_relative(format, 1.0),
+        );
+
+        graph.set_backbuffer_source(backbuffer);
+
+        log::info!("Compiling render graph...");
+        let compiled = graph.bake();
+        log::info!(
+            "Graph compiled: {} steps",
+            compiled.step_count()
+        );
+        for step in 0..compiled.step_count() {
+            log::info!(
+                "  step[{}]: \"{}\"",
+                step,
+                compiled.step_name(step)
+            );
+        }
+
+        log::info!("Allocating physical resources...");
+        let physical =
+            PhysicalResources::allocate(wsi.device_mut(), &compiled, extent, format)
+                .expect("failed to allocate physical resources");
+
+        self.compiled = Some(compiled);
+        self.physical = Some(physical);
+    }
+
+    fn render(&mut self) {
+        let wsi = self.wsi.as_mut().unwrap();
+
+        let swapchain_image = match wsi.begin_frame() {
+            Ok(img) => img,
+            Err(e) => {
+                log::warn!("begin_frame failed: {e}");
+                return;
+            }
+        };
+
+        // Inject swapchain image into the backbuffer slot.
+        self.physical
+            .as_mut()
+            .unwrap()
+            .set_backbuffer(swapchain_image.image, swapchain_image.view);
+
+        let raw_cmd = wsi
+            .device()
+            .request_command_buffer_raw(QueueType::Graphics)
+            .expect("failed to allocate command buffer");
+        let mut cmd = CommandBuffer::from_raw(
+            raw_cmd,
+            CommandBufferType::Graphics,
+            wsi.device().raw().clone(),
+        );
+
+        // Record the entire graph: barriers, dynamic rendering, present transition.
+        GraphExecutor::record(
+            self.compiled.as_ref().unwrap(),
+            &mut cmd,
+            self.physical.as_ref().unwrap(),
+        );
+
+        if let Err(e) = wsi.end_frame(cmd.raw()) {
+            log::warn!("end_frame failed: {e}");
+        }
+
+        self.frame_counter.fetch_add(1, Ordering::Relaxed);
+        self.window.as_ref().unwrap().request_redraw();
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window_attrs = Window::default_attributes()
+            .with_title("ignis — 04 render graph")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
+
+        let window = event_loop
+            .create_window(window_attrs)
+            .expect("failed to create window");
+
+        let platform = WinitPlatform::new(&window).expect("failed to create winit platform");
+        let wsi = WSI::new(&platform, &WSIConfig::default()).expect("failed to initialize WSI");
+
+        self.window = Some(window);
+        self.wsi = Some(wsi);
+        self.build_graph();
+        self.window.as_ref().unwrap().request_redraw();
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _id: WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Resized(size) => {
+                if let Some(wsi) = &mut self.wsi {
+                    wsi.resize(size.width, size.height);
+                    // Recreate graph resources on resize.
+                    if let Some(physical) = self.physical.take() {
+                        physical.destroy(wsi.device_mut());
+                    }
+                    self.compiled = None;
+                }
+                self.build_graph();
+            }
+            WindowEvent::RedrawRequested => {
+                self.render();
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Some(wsi) = &self.wsi {
+            // SAFETY: waiting for GPU idle before destroying resources.
+            unsafe { wsi.device().raw().device_wait_idle().ok(); }
+        }
+        if let Some(physical) = self.physical.take() {
+            if let Some(wsi) = &mut self.wsi {
+                physical.destroy(wsi.device_mut());
+            }
+        }
+    }
+}
 
 fn main() {
     env_logger::init();
 
-    let mut graph = RenderGraph::new();
+    let event_loop = EventLoop::new().expect("failed to create event loop");
+    event_loop.set_control_flow(ControlFlow::Poll);
 
-    // --- Shadow map pass ---
-    let mut shadow = graph.add_pass("shadow");
-    let shadow_map = shadow.add_depth_stencil_output(
-        "shadow_map",
-        AttachmentInfo {
-            format: vk::Format::D32_SFLOAT,
-            width: SizeClass::Absolute(2048),
-            height: SizeClass::Absolute(2048),
-            samples: vk::SampleCountFlags::TYPE_1,
-        },
-    );
-
-    // --- G-buffer pass ---
-    let mut gbuffer = graph.add_pass("gbuffer");
-    let albedo = gbuffer.add_color_output(
-        "albedo",
-        AttachmentInfo::swapchain_relative(vk::Format::R8G8B8A8_UNORM, 1.0),
-    );
-    let normals = gbuffer.add_color_output(
-        "normals",
-        AttachmentInfo::swapchain_relative(vk::Format::R16G16B16A16_SFLOAT, 1.0),
-    );
-    let gbuffer_depth = gbuffer.add_depth_stencil_output(
-        "gbuffer_depth",
-        AttachmentInfo::swapchain_relative(vk::Format::D32_SFLOAT, 1.0),
-    );
-
-    // --- Lighting pass (reads shadow map + G-buffer) ---
-    let mut lighting = graph.add_pass("lighting");
-    lighting.add_texture_input(shadow_map);
-    lighting.add_texture_input(albedo);
-    lighting.add_texture_input(normals);
-    lighting.add_depth_stencil_input(gbuffer_depth);
-    let hdr = lighting.add_color_output(
-        "hdr",
-        AttachmentInfo::swapchain_relative(vk::Format::R16G16B16A16_SFLOAT, 1.0),
-    );
-
-    // --- Tone mapping (post-process) ---
-    let mut tonemap = graph.add_pass("tonemap");
-    tonemap.add_texture_input(hdr);
-    let ldr = tonemap.add_color_output(
-        "ldr",
-        AttachmentInfo::swapchain_relative(vk::Format::B8G8R8A8_SRGB, 1.0),
-    );
-
-    // --- An intentionally dead pass (should be culled) ---
-    let mut _debug = graph.add_pass("debug_overlay");
-    _debug.add_storage_output(
-        "debug_buffer",
-        BufferInfo {
-            size: 1024,
-            usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-        },
-    );
-
-    // Set the final output
-    graph.set_backbuffer_source(ldr);
-
-    // --- Compile ---
-    println!("Compiling render graph...");
-    let compiled: CompiledGraph = graph.bake();
-
-    println!("\nExecution order ({} steps):", compiled.step_count());
-    for step in 0..compiled.step_count() {
-        let kind = if compiled.step_is_compute(step) {
-            "compute"
-        } else {
-            "graphics"
-        };
-        println!("  [{}] \"{}\" ({})", step, compiled.step_name(step), kind);
-    }
-
-    // --- Analyze subpass merge opportunities ---
-    let merge_groups = find_merge_groups(&compiled);
-    if merge_groups.is_empty() {
-        println!("\nNo subpass merge opportunities detected.");
-    } else {
-        println!("\nSubpass merge groups:");
-        for (i, group) in merge_groups.iter().enumerate() {
-            println!("  Group {}: {} passes", i, group.steps.len());
-        }
-    }
-
-    // --- Analyze resource aliasing ---
-    let alias_groups = find_alias_groups(&compiled);
-    if alias_groups.is_empty() {
-        println!("No resource aliasing opportunities detected.");
-    } else {
-        println!("\nAlias groups:");
-        for (i, group) in alias_groups.iter().enumerate() {
-            println!("  Group {}: {} resources can share memory", i, group.resources.len());
-        }
-    }
-
-    // Verify the dead pass was culled
-    let has_debug = (0..compiled.step_count())
-        .any(|s| compiled.step_name(s) == "debug_overlay");
-    println!(
-        "\nDead pass culling: debug_overlay {}",
-        if has_debug { "PRESENT (bug!)" } else { "correctly culled" }
-    );
-
-    println!("\nRender graph compilation successful.");
+    let mut app = App::new();
+    event_loop.run_app(&mut app).expect("event loop error");
 }

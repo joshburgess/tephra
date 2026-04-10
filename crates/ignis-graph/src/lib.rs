@@ -21,6 +21,7 @@
 //! ```
 
 pub mod alias;
+pub mod allocate;
 pub mod compile;
 pub mod execute;
 pub mod graph;
@@ -28,6 +29,7 @@ pub mod pass;
 pub mod resource;
 pub mod subpass_merge;
 
+pub use allocate::PhysicalResources;
 pub use compile::CompiledGraph;
 pub use execute::GraphExecutor;
 pub use graph::{PassBuilder, RenderGraph};

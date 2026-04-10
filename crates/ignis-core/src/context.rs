@@ -85,6 +85,12 @@ pub struct DeviceFeatures {
     pub synchronization2: bool,
     /// Whether dynamic rendering is supported (Vulkan 1.3+).
     pub dynamic_rendering: bool,
+    /// Whether push descriptors are supported (VK_KHR_push_descriptor).
+    pub push_descriptors: bool,
+    /// Whether descriptor indexing features are available for bindless rendering (Vulkan 1.2+).
+    pub descriptor_indexing: bool,
+    /// Whether buffer device address is supported (Vulkan 1.2+).
+    pub buffer_device_address: bool,
 }
 
 /// The core Vulkan context owning instance, device, queues, and allocator.
@@ -104,6 +110,7 @@ pub struct Context {
     device_features: DeviceFeatures,
     debug_utils: Option<ash::ext::debug_utils::Instance>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
+    push_descriptor_device: Option<ash::khr::push_descriptor::Device>,
 }
 
 /// Vulkan debug messenger callback. Routes validation messages to the `log` crate.
@@ -302,10 +309,38 @@ impl Context {
         // SAFETY: physical_device is valid, features2 chain is properly constructed.
         unsafe { instance.get_physical_device_features2(physical_device, &mut features2) };
 
+        // Check for optional device extensions
+        let device_extension_props = unsafe {
+            instance.enumerate_device_extension_properties(physical_device)
+        }
+        .unwrap_or_default();
+
+        let has_push_descriptor = device_extension_props.iter().any(|ext| {
+            // SAFETY: extension_name is a null-terminated C string from the driver.
+            let name = unsafe { CStr::from_ptr(ext.extension_name.as_ptr()) };
+            name == ash::khr::push_descriptor::NAME
+        });
+
+        let has_descriptor_indexing =
+            vulkan_12_features.descriptor_binding_partially_bound == vk::TRUE
+                && vulkan_12_features.descriptor_binding_sampled_image_update_after_bind
+                    == vk::TRUE
+                && vulkan_12_features.descriptor_binding_storage_buffer_update_after_bind
+                    == vk::TRUE
+                && vulkan_12_features.runtime_descriptor_array == vk::TRUE
+                && vulkan_12_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
+                && vulkan_12_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE;
+
+        let has_buffer_device_address =
+            vulkan_12_features.buffer_device_address == vk::TRUE;
+
         let device_features = DeviceFeatures {
             timeline_semaphore: vulkan_12_features.timeline_semaphore == vk::TRUE,
             synchronization2: vulkan_13_features.synchronization2 == vk::TRUE,
             dynamic_rendering: vulkan_13_features.dynamic_rendering == vk::TRUE,
+            push_descriptors: has_push_descriptor,
+            descriptor_indexing: has_descriptor_indexing,
+            buffer_device_address: has_buffer_device_address,
         };
 
         // Create logical device
@@ -346,9 +381,28 @@ impl Context {
             device_extensions.push(ash::khr::portability_subset::NAME.as_ptr());
         }
 
+        if has_push_descriptor {
+            device_extensions.push(ash::khr::push_descriptor::NAME.as_ptr());
+        }
+
         // Enable Vulkan 1.2 and 1.3 features we need
         let mut enabled_12_features = vk::PhysicalDeviceVulkan12Features::default()
-            .timeline_semaphore(device_features.timeline_semaphore);
+            .timeline_semaphore(device_features.timeline_semaphore)
+            .descriptor_binding_partially_bound(device_features.descriptor_indexing)
+            .descriptor_binding_sampled_image_update_after_bind(
+                device_features.descriptor_indexing,
+            )
+            .descriptor_binding_storage_buffer_update_after_bind(
+                device_features.descriptor_indexing,
+            )
+            .runtime_descriptor_array(device_features.descriptor_indexing)
+            .shader_sampled_image_array_non_uniform_indexing(
+                device_features.descriptor_indexing,
+            )
+            .shader_storage_buffer_array_non_uniform_indexing(
+                device_features.descriptor_indexing,
+            )
+            .buffer_device_address(device_features.buffer_device_address);
         let mut enabled_13_features = vk::PhysicalDeviceVulkan13Features::default()
             .synchronization2(device_features.synchronization2)
             .dynamic_rendering(device_features.dynamic_rendering);
@@ -378,6 +432,13 @@ impl Context {
             family_index: queue_indices.transfer,
         };
 
+        // Create extension loaders
+        let push_descriptor_device = if has_push_descriptor {
+            Some(ash::khr::push_descriptor::Device::new(&instance, &device))
+        } else {
+            None
+        };
+
         // Create GPU allocator
         let allocator = vma::Allocator::new(&vma::AllocatorCreateDesc {
             instance: instance.clone(),
@@ -391,7 +452,7 @@ impl Context {
                 log_stack_traces: false,
                 store_stack_traces: false,
             },
-            buffer_device_address: false,
+            buffer_device_address: device_features.buffer_device_address,
             allocation_sizes: gpu_allocator::AllocationSizes::default(),
         })
         .map_err(|e| ContextError::AllocatorCreation(e.to_string()))?;
@@ -409,6 +470,7 @@ impl Context {
             device_features,
             debug_utils,
             debug_messenger,
+            push_descriptor_device,
         })
     }
 
@@ -552,6 +614,11 @@ impl Context {
     /// Summary of enabled device features.
     pub fn device_features(&self) -> &DeviceFeatures {
         &self.device_features
+    }
+
+    /// The push descriptor extension loader, if available.
+    pub fn push_descriptor_device(&self) -> Option<&ash::khr::push_descriptor::Device> {
+        self.push_descriptor_device.as_ref()
     }
 }
 

@@ -26,6 +26,8 @@ pub struct Program {
     push_constant_range: Option<vk::PushConstantRange>,
     layout_hash: u64,
     shaders: Vec<ShaderStageInfo>,
+    /// Bitmask of descriptor sets using push descriptors.
+    push_descriptor_set_mask: u32,
 }
 
 /// Info about a shader stage retained for pipeline compilation.
@@ -40,6 +42,29 @@ impl Program {
     /// Merges reflection data from all shaders, creates `VkDescriptorSetLayout`s,
     /// `VkPipelineLayout`, and per-set `DescriptorSetAllocator`s.
     pub fn create(device: &ash::Device, shaders: &[&Shader]) -> Result<Self, vk::Result> {
+        Self::create_internal(device, shaders, 0)
+    }
+
+    /// Create a linked program with push descriptor support.
+    ///
+    /// Sets indicated by `push_descriptor_set_mask` use `VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR`
+    /// and skip descriptor pool allocation. Their descriptors are pushed inline
+    /// via `vkCmdPushDescriptorSetKHR` instead.
+    ///
+    /// Requires `VK_KHR_push_descriptor` to be enabled on the device.
+    pub fn create_with_push_descriptors(
+        device: &ash::Device,
+        shaders: &[&Shader],
+        push_descriptor_set_mask: u32,
+    ) -> Result<Self, vk::Result> {
+        Self::create_internal(device, shaders, push_descriptor_set_mask)
+    }
+
+    fn create_internal(
+        device: &ash::Device,
+        shaders: &[&Shader],
+        push_descriptor_set_mask: u32,
+    ) -> Result<Self, vk::Result> {
         let merged_sets = Self::merge_descriptor_sets(shaders);
         let merged_push_constants = Self::merge_push_constants(shaders);
 
@@ -54,6 +79,8 @@ impl Program {
                 continue;
             }
 
+            let is_push_set = push_descriptor_set_mask & (1 << i) != 0;
+
             let vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = set_info
                 .bindings
                 .iter()
@@ -66,26 +93,35 @@ impl Program {
                 })
                 .collect();
 
-            let layout_ci =
-                vk::DescriptorSetLayoutCreateInfo::default().bindings(&vk_bindings);
+            let mut layout_flags = vk::DescriptorSetLayoutCreateFlags::empty();
+            if is_push_set {
+                layout_flags |= vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR;
+            }
+
+            let layout_ci = vk::DescriptorSetLayoutCreateInfo::default()
+                .flags(layout_flags)
+                .bindings(&vk_bindings);
 
             // SAFETY: device is valid, layout_ci is well-formed.
             let layout = unsafe { device.create_descriptor_set_layout(&layout_ci, None)? };
             vk_set_layouts[i] = Some(layout);
 
-            let pool_sizes: Vec<vk::DescriptorPoolSize> = set_info
-                .bindings
-                .iter()
-                .map(|b| vk::DescriptorPoolSize {
-                    ty: b.descriptor_type,
-                    descriptor_count: b.descriptor_count,
-                })
-                .collect();
+            // Push descriptor sets don't need a pool allocator
+            if !is_push_set {
+                let pool_sizes: Vec<vk::DescriptorPoolSize> = set_info
+                    .bindings
+                    .iter()
+                    .map(|b| vk::DescriptorPoolSize {
+                        ty: b.descriptor_type,
+                        descriptor_count: b.descriptor_count,
+                    })
+                    .collect();
 
-            set_allocators[i] = Some(DescriptorSetAllocator::new(AllocatorLayoutInfo {
-                layout,
-                pool_sizes,
-            }));
+                set_allocators[i] = Some(DescriptorSetAllocator::new(AllocatorLayoutInfo {
+                    layout,
+                    pool_sizes,
+                }));
+            }
         }
 
         // Collect contiguous non-None layouts starting from set 0
@@ -133,6 +169,7 @@ impl Program {
             push_constant_range: merged_push_constants,
             layout_hash,
             shaders: shader_infos,
+            push_descriptor_set_mask,
         })
     }
 
@@ -159,6 +196,11 @@ impl Program {
     /// The layout hash for pipeline key computation.
     pub fn layout_hash(&self) -> u64 {
         self.layout_hash
+    }
+
+    /// Whether a given descriptor set uses push descriptors.
+    pub fn is_push_descriptor_set(&self, set: u32) -> bool {
+        self.push_descriptor_set_mask & (1 << set) != 0
     }
 
     /// The shader stage infos for pipeline compilation.

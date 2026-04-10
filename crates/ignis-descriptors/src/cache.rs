@@ -11,72 +11,30 @@ use rustc_hash::{FxHashMap, FxHasher};
 use crate::binding_table::{BindingSlot, DescriptorSetBindings};
 use crate::set_allocator::DescriptorSetAllocator;
 
-/// Per-frame descriptor set cache for a single layout.
-///
-/// Caches descriptor sets by their binding state hash. Reset when the
-/// frame context recycles (which also resets the underlying pool).
-pub struct DescriptorSetCache {
-    cache: FxHashMap<u64, vk::DescriptorSet>,
+/// Intermediate entry for building descriptor writes.
+struct WriteEntry {
+    binding: u32,
+    descriptor_type: vk::DescriptorType,
+    buffer_info_idx: Option<usize>,
+    image_info_idx: Option<usize>,
 }
 
-impl DescriptorSetCache {
-    /// Create a new empty cache.
-    pub fn new() -> Self {
-        Self {
-            cache: FxHashMap::default(),
-        }
-    }
+/// Prepared descriptor writes from a set of bindings.
+///
+/// Owns the backing `DescriptorBufferInfo` and `DescriptorImageInfo` arrays
+/// so that `build_writes()` can produce `WriteDescriptorSet` references that
+/// borrow from this struct.
+pub struct PreparedDescriptorWrites {
+    buffer_infos: Vec<vk::DescriptorBufferInfo>,
+    image_infos: Vec<vk::DescriptorImageInfo>,
+    entries: Vec<WriteEntry>,
+}
 
-    /// Look up or allocate+write a descriptor set for the given bindings.
-    ///
-    /// Returns the `VkDescriptorSet` to bind.
-    pub fn get_or_allocate(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut DescriptorSetAllocator,
-        bindings: &DescriptorSetBindings,
-    ) -> Result<vk::DescriptorSet, vk::Result> {
-        let hash = Self::hash_bindings(bindings);
-
-        if let Some(&set) = self.cache.get(&hash) {
-            return Ok(set);
-        }
-
-        // Cache miss: allocate a new set and write descriptors
-        let set = allocator.allocate(device)?;
-        Self::write_descriptors(device, set, bindings);
-        self.cache.insert(hash, set);
-
-        Ok(set)
-    }
-
-    /// Clear the cache. Called when the frame context resets.
-    pub fn reset(&mut self) {
-        self.cache.clear();
-    }
-
-    fn hash_bindings(bindings: &DescriptorSetBindings) -> u64 {
-        let mut hasher = FxHasher::default();
-        bindings.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    fn write_descriptors(
-        device: &ash::Device,
-        set: vk::DescriptorSet,
-        bindings: &DescriptorSetBindings,
-    ) {
-        // Collect descriptor writes
-        // We need to keep the info structs alive while building the writes
+impl PreparedDescriptorWrites {
+    /// Build prepared writes from the given binding state.
+    pub fn from_bindings(bindings: &DescriptorSetBindings) -> Self {
         let mut buffer_infos: Vec<vk::DescriptorBufferInfo> = Vec::new();
         let mut image_infos: Vec<vk::DescriptorImageInfo> = Vec::new();
-        // Track which indices correspond to which writes
-        struct WriteEntry {
-            binding: u32,
-            descriptor_type: vk::DescriptorType,
-            buffer_info_idx: Option<usize>,
-            image_info_idx: Option<usize>,
-        }
         let mut entries: Vec<WriteEntry> = Vec::new();
 
         let mut mask = bindings.active_mask;
@@ -173,35 +131,105 @@ impl DescriptorSetCache {
             mask &= mask - 1;
         }
 
-        if entries.is_empty() {
-            return;
+        Self {
+            buffer_infos,
+            image_infos,
+            entries,
         }
+    }
 
-        // Build the VkWriteDescriptorSet array
-        let writes: Vec<vk::WriteDescriptorSet<'_>> = entries
+    /// Whether there are any writes to apply.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Build `VkWriteDescriptorSet` array targeting the given descriptor set.
+    ///
+    /// For push descriptors, pass `vk::DescriptorSet::null()`.
+    pub fn build_writes(&self, dst_set: vk::DescriptorSet) -> Vec<vk::WriteDescriptorSet<'_>> {
+        self.entries
             .iter()
             .map(|entry| {
                 let mut write = vk::WriteDescriptorSet::default()
-                    .dst_set(set)
+                    .dst_set(dst_set)
                     .dst_binding(entry.binding)
                     .dst_array_element(0)
                     .descriptor_type(entry.descriptor_type);
 
                 if let Some(idx) = entry.buffer_info_idx {
-                    write = write.buffer_info(&buffer_infos[idx..idx + 1]);
+                    write = write.buffer_info(&self.buffer_infos[idx..idx + 1]);
                 }
                 if let Some(idx) = entry.image_info_idx {
-                    write = write.image_info(&image_infos[idx..idx + 1]);
+                    write = write.image_info(&self.image_infos[idx..idx + 1]);
                 }
 
                 write
             })
-            .collect();
+            .collect()
+    }
 
+    /// Build writes and apply them to a descriptor set via `vkUpdateDescriptorSets`.
+    pub fn apply(&self, device: &ash::Device, dst_set: vk::DescriptorSet) {
+        if self.is_empty() {
+            return;
+        }
+        let writes = self.build_writes(dst_set);
         // SAFETY: device, set, and all referenced handles are valid.
         unsafe {
             device.update_descriptor_sets(&writes, &[]);
         }
+    }
+}
+
+/// Per-frame descriptor set cache for a single layout.
+///
+/// Caches descriptor sets by their binding state hash. Reset when the
+/// frame context recycles (which also resets the underlying pool).
+pub struct DescriptorSetCache {
+    cache: FxHashMap<u64, vk::DescriptorSet>,
+}
+
+impl DescriptorSetCache {
+    /// Create a new empty cache.
+    pub fn new() -> Self {
+        Self {
+            cache: FxHashMap::default(),
+        }
+    }
+
+    /// Look up or allocate+write a descriptor set for the given bindings.
+    ///
+    /// Returns the `VkDescriptorSet` to bind.
+    pub fn get_or_allocate(
+        &mut self,
+        device: &ash::Device,
+        allocator: &mut DescriptorSetAllocator,
+        bindings: &DescriptorSetBindings,
+    ) -> Result<vk::DescriptorSet, vk::Result> {
+        let hash = Self::hash_bindings(bindings);
+
+        if let Some(&set) = self.cache.get(&hash) {
+            return Ok(set);
+        }
+
+        // Cache miss: allocate a new set and write descriptors
+        let set = allocator.allocate(device)?;
+        let prepared = PreparedDescriptorWrites::from_bindings(bindings);
+        prepared.apply(device, set);
+        self.cache.insert(hash, set);
+
+        Ok(set)
+    }
+
+    /// Clear the cache. Called when the frame context resets.
+    pub fn reset(&mut self) {
+        self.cache.clear();
+    }
+
+    fn hash_bindings(bindings: &DescriptorSetBindings) -> u64 {
+        let mut hasher = FxHasher::default();
+        bindings.hash(&mut hasher);
+        hasher.finish()
     }
 }
 

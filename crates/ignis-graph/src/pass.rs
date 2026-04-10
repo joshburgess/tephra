@@ -4,6 +4,7 @@
 //! The graph compiler uses these declarations to determine execution order
 //! and barrier placement.
 
+use ash::vk;
 use ignis_command::command_buffer::CommandBuffer;
 
 use crate::resource::ResourceHandle;
@@ -68,6 +69,28 @@ pub trait RenderPassCallback {
     /// Whether this callback needs a render pass (false for compute-only).
     fn need_render_pass(&self) -> bool {
         true
+    }
+
+    /// Clear color for a color attachment at the given index.
+    ///
+    /// Called by the executor when building dynamic rendering info for
+    /// color outputs (`loadOp = CLEAR`). Override to provide custom clear
+    /// colors per attachment.
+    fn clear_color(&self, _attachment_index: usize) -> vk::ClearColorValue {
+        vk::ClearColorValue {
+            float32: [0.0, 0.0, 0.0, 1.0],
+        }
+    }
+
+    /// Clear value for the depth/stencil attachment.
+    ///
+    /// Called by the executor when building dynamic rendering info for
+    /// depth/stencil outputs (`loadOp = CLEAR`).
+    fn clear_depth_stencil(&self) -> vk::ClearDepthStencilValue {
+        vk::ClearDepthStencilValue {
+            depth: 1.0,
+            stencil: 0,
+        }
     }
 }
 
