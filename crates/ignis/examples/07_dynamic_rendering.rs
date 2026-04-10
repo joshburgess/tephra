@@ -140,6 +140,7 @@ impl App {
                 load_op: AttachmentLoadOp::Clear,
                 store_op: AttachmentStoreOp::Store,
                 clear_value,
+                resolve_view: None,
             };
 
             ctx.begin_rendering(extent, &[color_attachment], None)

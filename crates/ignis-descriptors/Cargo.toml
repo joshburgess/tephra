@@ -8,6 +8,7 @@ description = "Descriptor set allocation, slot-based binding model, hash-and-cac
 
 [dependencies]
 ash = { workspace = true }
+gpu-allocator = { workspace = true }
 ignis-core = { workspace = true }
 log = { workspace = true }
 rustc-hash = { workspace = true }

@@ -6,4 +6,5 @@
 pub mod bindless;
 pub mod binding_table;
 pub mod cache;
+pub mod descriptor_buffer;
 pub mod set_allocator;

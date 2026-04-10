@@ -261,7 +261,7 @@ impl Context {
             let messenger = unsafe {
                 debug_utils_loader.create_debug_utils_messenger(&messenger_ci, None)
             }
-            .map_err(|e| ContextError::InstanceCreation(e))?;
+            .map_err(ContextError::InstanceCreation)?;
 
             (Some(debug_utils_loader), Some(messenger))
         } else {

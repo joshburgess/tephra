@@ -6,11 +6,14 @@
 
 pub mod async_pipeline;
 pub mod draw_context;
+pub mod fossilize;
 pub mod framebuffer_cache;
 pub mod pipeline;
+pub mod pipeline_binary;
 pub mod pipeline_cache;
 pub mod program;
 pub mod render_pass;
 pub mod render_state;
 pub mod shader;
 pub mod shader_manager;
+pub mod shader_variant;

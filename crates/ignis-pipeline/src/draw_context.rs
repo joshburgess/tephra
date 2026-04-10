@@ -92,6 +92,11 @@ pub struct RenderingAttachment {
     pub store_op: AttachmentStoreOp,
     /// Clear value (used when load_op is Clear).
     pub clear_value: vk::ClearValue,
+    /// Optional resolve attachment for MSAA.
+    ///
+    /// When set, the multisample attachment is resolved into this single-sample
+    /// view at the end of the render pass. The resolve mode is always AVERAGE.
+    pub resolve_view: Option<vk::ImageView>,
 }
 
 /// Snapshot of draw context state for save/restore.
@@ -278,6 +283,12 @@ impl<'a> DrawContext<'a> {
                 if a.load_op == AttachmentLoadOp::Clear {
                     info = info.clear_value(a.clear_value);
                 }
+                if let Some(resolve) = a.resolve_view {
+                    info = info
+                        .resolve_image_view(resolve)
+                        .resolve_image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .resolve_mode(vk::ResolveModeFlags::AVERAGE);
+                }
                 info
             })
             .collect();
@@ -301,6 +312,12 @@ impl<'a> DrawContext<'a> {
                 .store_op(depth.store_op.into());
             if depth.load_op == AttachmentLoadOp::Clear {
                 info = info.clear_value(depth.clear_value);
+            }
+            if let Some(resolve) = depth.resolve_view {
+                info = info
+                    .resolve_image_view(resolve)
+                    .resolve_image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                    .resolve_mode(vk::ResolveModeFlags::SAMPLE_ZERO);
             }
             vk_depth_attachment = Some(info);
 
@@ -468,6 +485,85 @@ impl<'a> DrawContext<'a> {
             vk::BlendOp::ADD,
         );
     }
+
+    // ---- Convenience state presets ----
+
+    /// Configure state for opaque geometry rendering.
+    ///
+    /// Sets: triangle list, back-face culling, CCW front face, depth test+write
+    /// with LESS_OR_EQUAL, no blending, full color write mask.
+    pub fn set_opaque_state(&mut self) {
+        self.state.topology = vk::PrimitiveTopology::TRIANGLE_LIST;
+        self.state.cull_mode = vk::CullModeFlags::BACK;
+        self.state.front_face = vk::FrontFace::COUNTER_CLOCKWISE;
+        self.state.depth_test = true;
+        self.state.depth_write = true;
+        self.state.depth_compare = vk::CompareOp::LESS_OR_EQUAL;
+        self.state.blend_enable = false;
+        self.state.color_write_mask = vk::ColorComponentFlags::RGBA;
+    }
+
+    /// Configure state for fullscreen quad / post-processing passes.
+    ///
+    /// Sets: triangle list, no culling, no depth test/write, no blending.
+    /// Typically used with a 3-vertex fullscreen triangle (no vertex buffers).
+    pub fn set_quad_state(&mut self) {
+        self.state.topology = vk::PrimitiveTopology::TRIANGLE_LIST;
+        self.state.cull_mode = vk::CullModeFlags::NONE;
+        self.state.front_face = vk::FrontFace::COUNTER_CLOCKWISE;
+        self.state.depth_test = false;
+        self.state.depth_write = false;
+        self.state.blend_enable = false;
+        self.state.color_write_mask = vk::ColorComponentFlags::RGBA;
+    }
+
+    /// Configure state for transparent sprite / UI rendering.
+    ///
+    /// Sets: triangle list, no culling, no depth write (depth test optional),
+    /// standard alpha blending (src_alpha, one_minus_src_alpha).
+    pub fn set_transparent_sprite_state(&mut self) {
+        self.state.topology = vk::PrimitiveTopology::TRIANGLE_LIST;
+        self.state.cull_mode = vk::CullModeFlags::NONE;
+        self.state.front_face = vk::FrontFace::COUNTER_CLOCKWISE;
+        self.state.depth_test = true;
+        self.state.depth_write = false;
+        self.state.depth_compare = vk::CompareOp::LESS_OR_EQUAL;
+        self.set_alpha_blend();
+        self.state.color_write_mask = vk::ColorComponentFlags::RGBA;
+    }
+
+    /// Configure state for additive blending (particles, lights).
+    ///
+    /// Sets: triangle list, no culling, no depth write, additive blend (ONE, ONE).
+    pub fn set_additive_blend_state(&mut self) {
+        self.state.topology = vk::PrimitiveTopology::TRIANGLE_LIST;
+        self.state.cull_mode = vk::CullModeFlags::NONE;
+        self.state.front_face = vk::FrontFace::COUNTER_CLOCKWISE;
+        self.state.depth_test = true;
+        self.state.depth_write = false;
+        self.state.depth_compare = vk::CompareOp::LESS_OR_EQUAL;
+        self.set_blend(
+            true,
+            vk::BlendFactor::ONE,
+            vk::BlendFactor::ONE,
+            vk::BlendOp::ADD,
+            vk::BlendFactor::ONE,
+            vk::BlendFactor::ONE,
+            vk::BlendOp::ADD,
+        );
+        self.state.color_write_mask = vk::ColorComponentFlags::RGBA;
+    }
+
+    /// Configure state for wireframe rendering.
+    ///
+    /// Sets: triangle list with LINE polygon mode, no culling, depth test+write.
+    pub fn set_wireframe_state(&mut self) {
+        self.set_opaque_state();
+        self.state.polygon_mode = vk::PolygonMode::LINE;
+        self.state.cull_mode = vk::CullModeFlags::NONE;
+    }
+
+    // ---- Dynamic state setters ----
 
     /// Enable or disable depth bias (constant/clamp/slope are dynamic state).
     pub fn set_depth_bias_enable(&mut self, enable: bool) {

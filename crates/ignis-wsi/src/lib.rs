@@ -4,6 +4,9 @@
 //! [`Device`](ignis_core::device::Device) and handles swapchain creation,
 //! recreation, and frame presentation.
 
+pub mod hdr;
+pub mod headless;
 pub mod platform;
+pub mod pre_rotation;
 pub mod swapchain;
 pub mod wsi;
