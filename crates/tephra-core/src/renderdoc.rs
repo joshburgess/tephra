@@ -17,9 +17,9 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use log::{debug, info};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use log::warn;
+use log::{debug, info};
 
 /// RenderDoc API version 1.6.0 (latest stable).
 #[cfg(any(target_os = "linux", target_os = "windows"))]
