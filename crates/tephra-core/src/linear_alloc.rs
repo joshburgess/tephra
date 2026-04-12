@@ -1,6 +1,6 @@
 //! Bump allocator for transient per-frame data (VBO, IBO, UBO).
 //!
-//! Each frame context owns a [`LinearAllocatorPool`] that provides fast,
+//! Each frame context owns a `LinearAllocatorPool` that provides fast,
 //! zero-overhead allocations from pre-mapped host-visible buffers. All
 //! allocations are reset at the start of each frame.
 

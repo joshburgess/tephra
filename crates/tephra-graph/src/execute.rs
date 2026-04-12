@@ -1,7 +1,7 @@
 //! Runtime execution of a compiled render graph.
 //!
 //! Records barriers, manages dynamic rendering state, and invokes pass
-//! callbacks into a [`CommandBuffer`](tephra_command::command_buffer::CommandBuffer).
+//! callbacks into a [`CommandBuffer`].
 
 use ash::vk;
 use tephra_command::barriers::ImageBarrierInfo;

@@ -1,6 +1,6 @@
 //! Multi-stage shader program linking.
 //!
-//! A [`Program`] combines multiple [`Shader`](crate::shader::Shader) stages,
+//! A [`Program`] combines multiple [`Shader`] stages,
 //! merges their reflection data, and creates the Vulkan pipeline layout and
 //! per-set descriptor allocators.
 

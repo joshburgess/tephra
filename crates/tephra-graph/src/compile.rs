@@ -1,6 +1,6 @@
 //! Graph compilation: dependency analysis, topological ordering, and barrier placement.
 //!
-//! The compiler takes a [`RenderGraph`](crate::graph::RenderGraph) and produces a
+//! The compiler takes a [`RenderGraph`] and produces a
 //! [`CompiledGraph`] with a topologically sorted execution order (unreachable passes
 //! culled) and per-pass barrier lists for correct synchronization.
 

@@ -21,8 +21,7 @@ use crate::shader::Shader;
 /// # With `hot-reload`
 ///
 /// Watches registered shader directories for file modifications. Call
-/// [`poll_changes`](ShaderManager::poll_changes) each frame to check for
-/// invalidated shaders.
+/// `poll_changes` each frame to check for invalidated shaders.
 pub struct ShaderManager {
     shaders: HashMap<PathBuf, ManagedShader>,
     #[cfg(feature = "hot-reload")]

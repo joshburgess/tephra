@@ -19,8 +19,8 @@ pub struct MergeGroup {
 /// Analyze compiled pass order for subpass merge opportunities.
 ///
 /// Two consecutive graphics passes can merge when the second reads an
-/// attachment written by the first via [`AccessType::AttachmentInput`]
-/// (subpass input attachment). Both passes must be graphics (not compute).
+/// attachment written by the first as a subpass input attachment. Both
+/// passes must be graphics (not compute).
 pub fn find_merge_groups(graph: &CompiledGraph) -> Vec<MergeGroup> {
     if graph.pass_order.is_empty() {
         return Vec::new();
