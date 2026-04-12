@@ -477,19 +477,10 @@ mod tests {
             None,
         );
         // Graphics always returns the graphics pool
-        assert_eq!(
-            ctx.command_pool(QueueType::Graphics).as_raw(),
-            100
-        );
+        assert_eq!(ctx.command_pool(QueueType::Graphics).as_raw(), 100);
         // Compute/Transfer fall back to graphics when no dedicated pool
-        assert_eq!(
-            ctx.command_pool(QueueType::Compute).as_raw(),
-            100
-        );
-        assert_eq!(
-            ctx.command_pool(QueueType::Transfer).as_raw(),
-            100
-        );
+        assert_eq!(ctx.command_pool(QueueType::Compute).as_raw(), 100);
+        assert_eq!(ctx.command_pool(QueueType::Transfer).as_raw(), 100);
     }
 
     #[test]
@@ -500,19 +491,10 @@ mod tests {
             Some(vk::CommandPool::from_raw(200)),
             None,
         );
-        assert_eq!(
-            ctx.command_pool(QueueType::Graphics).as_raw(),
-            100
-        );
-        assert_eq!(
-            ctx.command_pool(QueueType::Compute).as_raw(),
-            200
-        );
+        assert_eq!(ctx.command_pool(QueueType::Graphics).as_raw(), 100);
+        assert_eq!(ctx.command_pool(QueueType::Compute).as_raw(), 200);
         // Transfer still falls back
-        assert_eq!(
-            ctx.command_pool(QueueType::Transfer).as_raw(),
-            100
-        );
+        assert_eq!(ctx.command_pool(QueueType::Transfer).as_raw(), 100);
     }
 
     #[test]
@@ -523,10 +505,7 @@ mod tests {
             None,
             Some(vk::CommandPool::from_raw(300)),
         );
-        assert_eq!(
-            ctx.command_pool(QueueType::Transfer).as_raw(),
-            300
-        );
+        assert_eq!(ctx.command_pool(QueueType::Transfer).as_raw(), 300);
     }
 
     #[test]
@@ -544,12 +523,7 @@ mod tests {
 
     #[test]
     fn frame_context_initial_state() {
-        let ctx = FrameContext::new(
-            vk::Fence::null(),
-            vk::CommandPool::from_raw(1),
-            None,
-            None,
-        );
+        let ctx = FrameContext::new(vk::Fence::null(), vk::CommandPool::from_raw(1), None, None);
         assert!(!ctx.fence_submitted);
         assert!(ctx.deletion_queue.is_empty());
     }

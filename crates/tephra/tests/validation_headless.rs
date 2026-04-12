@@ -318,11 +318,7 @@ fn buffer_copy() {
     // Verify
     let dst_slice = dst.mapped_slice().expect("dst not mapped");
     for (i, byte) in dst_slice.iter().enumerate().take(size as usize) {
-        assert_eq!(
-            *byte,
-            (i % 256) as u8,
-            "buffer copy mismatch at byte {i}"
-        );
+        assert_eq!(*byte, (i % 256) as u8, "buffer copy mismatch at byte {i}");
     }
 
     // Cleanup

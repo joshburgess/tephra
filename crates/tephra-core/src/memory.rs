@@ -44,12 +44,18 @@ mod tests {
 
     #[test]
     fn device_maps_to_gpu_only() {
-        assert_eq!(MemoryDomain::Device.to_gpu_allocator(), MemoryLocation::GpuOnly);
+        assert_eq!(
+            MemoryDomain::Device.to_gpu_allocator(),
+            MemoryLocation::GpuOnly
+        );
     }
 
     #[test]
     fn host_maps_to_cpu_to_gpu() {
-        assert_eq!(MemoryDomain::Host.to_gpu_allocator(), MemoryLocation::CpuToGpu);
+        assert_eq!(
+            MemoryDomain::Host.to_gpu_allocator(),
+            MemoryLocation::CpuToGpu
+        );
     }
 
     #[test]

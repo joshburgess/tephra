@@ -112,7 +112,10 @@ mod tests {
             vk::ImageAspectFlags::COLOR,
         );
         assert_eq!(barrier.old_layout, vk::ImageLayout::UNDEFINED);
-        assert_eq!(barrier.new_layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+        assert_eq!(
+            barrier.new_layout,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        );
     }
 
     #[test]
@@ -139,9 +142,15 @@ mod tests {
             vk::AccessFlags2::SHADER_READ,
             vk::ImageAspectFlags::DEPTH,
         );
-        assert_eq!(barrier.subresource_range.aspect_mask, vk::ImageAspectFlags::DEPTH);
+        assert_eq!(
+            barrier.subresource_range.aspect_mask,
+            vk::ImageAspectFlags::DEPTH
+        );
         assert_eq!(barrier.subresource_range.base_mip_level, 0);
-        assert_eq!(barrier.subresource_range.level_count, vk::REMAINING_MIP_LEVELS);
+        assert_eq!(
+            barrier.subresource_range.level_count,
+            vk::REMAINING_MIP_LEVELS
+        );
         assert_eq!(barrier.subresource_range.base_array_layer, 0);
         assert_eq!(
             barrier.subresource_range.layer_count,
@@ -167,7 +176,10 @@ mod tests {
     #[test]
     fn color_to_present_layouts() {
         let barrier = ImageBarrierInfo::color_to_present(dummy_image());
-        assert_eq!(barrier.old_layout, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+        assert_eq!(
+            barrier.old_layout,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+        );
         assert_eq!(barrier.new_layout, vk::ImageLayout::PRESENT_SRC_KHR);
     }
 
@@ -179,10 +191,7 @@ mod tests {
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
         );
         assert_eq!(barrier.dst_stage, vk::PipelineStageFlags2::BOTTOM_OF_PIPE);
-        assert_eq!(
-            barrier.src_access,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
-        );
+        assert_eq!(barrier.src_access, vk::AccessFlags2::COLOR_ATTACHMENT_WRITE);
         assert_eq!(barrier.dst_access, vk::AccessFlags2::NONE);
     }
 
@@ -203,7 +212,10 @@ mod tests {
     fn undefined_to_color_attachment_layouts() {
         let barrier = ImageBarrierInfo::undefined_to_color_attachment(dummy_image());
         assert_eq!(barrier.old_layout, vk::ImageLayout::UNDEFINED);
-        assert_eq!(barrier.new_layout, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+        assert_eq!(
+            barrier.new_layout,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+        );
     }
 
     #[test]
@@ -214,10 +226,7 @@ mod tests {
             barrier.dst_stage,
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
         );
-        assert_eq!(
-            barrier.dst_access,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
-        );
+        assert_eq!(barrier.dst_access, vk::AccessFlags2::COLOR_ATTACHMENT_WRITE);
     }
 
     // --- Image handle preserved ---

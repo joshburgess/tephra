@@ -12,7 +12,9 @@ use tephra::core::context::QueueType;
 use tephra::core::image::ImageCreateInfo;
 use tephra::core::memory::MemoryDomain;
 
-use validation_harness::{assert_no_validation_errors, clear_errors, create_headless_device, init_capture_logger};
+use validation_harness::{
+    assert_no_validation_errors, clear_errors, create_headless_device, init_capture_logger,
+};
 
 /// Run multiple frames with empty submissions to verify fence lifecycle.
 ///
@@ -480,7 +482,9 @@ fn buffer_readback_after_copy() {
 
     // Wait for GPU to finish — must wait explicitly since begin_frame with
     // FRAME_OVERLAP=2 won't necessarily wait on this frame's fence yet
-    device.wait_queue_idle(QueueType::Graphics).expect("wait idle");
+    device
+        .wait_queue_idle(QueueType::Graphics)
+        .expect("wait idle");
 
     // Verify data
     let dst_slice = dst.mapped_slice().expect("dst mapped");

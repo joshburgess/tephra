@@ -318,11 +318,8 @@ fn multi_frame_descriptor_reuse() {
         let raw_cmd = device
             .request_command_buffer_raw(QueueType::Graphics)
             .expect("cmd alloc");
-        let mut cmd = CommandBuffer::from_raw(
-            raw_cmd,
-            CommandBufferType::Graphics,
-            device.raw().clone(),
-        );
+        let mut cmd =
+            CommandBuffer::from_raw(raw_cmd, CommandBufferType::Graphics, device.raw().clone());
 
         {
             let mut ctx = DrawContext::new(&mut cmd, device.raw(), &mut frame_resources);

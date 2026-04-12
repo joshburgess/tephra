@@ -382,8 +382,7 @@ mod tests {
 
     #[test]
     fn builder_filter() {
-        let info =
-            SamplerCreateInfo::default().filter(vk::Filter::NEAREST, vk::Filter::NEAREST);
+        let info = SamplerCreateInfo::default().filter(vk::Filter::NEAREST, vk::Filter::NEAREST);
         assert_eq!(info.mag_filter, vk::Filter::NEAREST);
         assert_eq!(info.min_filter, vk::Filter::NEAREST);
     }
@@ -425,8 +424,7 @@ mod tests {
 
     #[test]
     fn builder_border_color() {
-        let info =
-            SamplerCreateInfo::default().border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE);
+        let info = SamplerCreateInfo::default().border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE);
         assert_eq!(info.border_color, vk::BorderColor::FLOAT_OPAQUE_WHITE);
     }
 

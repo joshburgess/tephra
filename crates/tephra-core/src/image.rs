@@ -189,9 +189,7 @@ mod tests {
         let info = ImageCreateInfo::render_target(1920, 1080, vk::Format::B8G8R8A8_SRGB);
         assert_eq!(info.width, 1920);
         assert_eq!(info.height, 1080);
-        assert!(info
-            .usage
-            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
+        assert!(info.usage.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
         assert!(info.usage.contains(vk::ImageUsageFlags::SAMPLED));
         assert!(!info.usage.contains(vk::ImageUsageFlags::TRANSFER_DST));
         assert_eq!(info.domain, ImageDomain::Physical);
@@ -200,25 +198,22 @@ mod tests {
     #[test]
     fn depth_stencil_defaults() {
         let info = ImageCreateInfo::depth_stencil(800, 600, vk::Format::D32_SFLOAT);
-        assert!(info
-            .usage
-            .contains(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT));
-        assert!(!info
-            .usage
-            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
+        assert!(
+            info.usage
+                .contains(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
+        );
+        assert!(!info.usage.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
         assert_eq!(info.domain, ImageDomain::Physical);
     }
 
     #[test]
     fn transient_attachment_defaults() {
-        let info =
-            ImageCreateInfo::transient_attachment(640, 480, vk::Format::R8G8B8A8_UNORM);
-        assert!(info
-            .usage
-            .contains(vk::ImageUsageFlags::TRANSIENT_ATTACHMENT));
-        assert!(info
-            .usage
-            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
+        let info = ImageCreateInfo::transient_attachment(640, 480, vk::Format::R8G8B8A8_UNORM);
+        assert!(
+            info.usage
+                .contains(vk::ImageUsageFlags::TRANSIENT_ATTACHMENT)
+        );
+        assert!(info.usage.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
         assert_eq!(info.domain, ImageDomain::Transient);
     }
 
@@ -231,15 +226,15 @@ mod tests {
 
     #[test]
     fn builder_mip_levels() {
-        let info = ImageCreateInfo::immutable_2d(256, 256, vk::Format::R8G8B8A8_UNORM)
-            .mip_levels(9);
+        let info =
+            ImageCreateInfo::immutable_2d(256, 256, vk::Format::R8G8B8A8_UNORM).mip_levels(9);
         assert_eq!(info.mip_levels, 9);
     }
 
     #[test]
     fn builder_array_layers() {
-        let info = ImageCreateInfo::immutable_2d(64, 64, vk::Format::R8G8B8A8_UNORM)
-            .array_layers(6);
+        let info =
+            ImageCreateInfo::immutable_2d(64, 64, vk::Format::R8G8B8A8_UNORM).array_layers(6);
         assert_eq!(info.array_layers, 6);
     }
 

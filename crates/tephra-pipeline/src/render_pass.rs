@@ -273,8 +273,14 @@ mod tests {
 
     #[test]
     fn load_op_conversion() {
-        assert_eq!(vk::AttachmentLoadOp::from(AttachmentLoadOp::Clear), vk::AttachmentLoadOp::CLEAR);
-        assert_eq!(vk::AttachmentLoadOp::from(AttachmentLoadOp::Load), vk::AttachmentLoadOp::LOAD);
+        assert_eq!(
+            vk::AttachmentLoadOp::from(AttachmentLoadOp::Clear),
+            vk::AttachmentLoadOp::CLEAR
+        );
+        assert_eq!(
+            vk::AttachmentLoadOp::from(AttachmentLoadOp::Load),
+            vk::AttachmentLoadOp::LOAD
+        );
         assert_eq!(
             vk::AttachmentLoadOp::from(AttachmentLoadOp::DontCare),
             vk::AttachmentLoadOp::DONT_CARE

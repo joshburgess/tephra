@@ -381,7 +381,10 @@ mod tests {
     fn define_set_string() {
         let mut d = DefineSet::new();
         d.set_string("BACKEND", "vulkan");
-        assert_eq!(d.get("BACKEND"), Some(&DefineValue::String("vulkan".to_string())));
+        assert_eq!(
+            d.get("BACKEND"),
+            Some(&DefineValue::String("vulkan".to_string()))
+        );
         let preamble = d.to_preamble();
         assert!(preamble.contains("#define BACKEND vulkan"));
     }
@@ -393,7 +396,10 @@ mod tests {
 
     #[test]
     fn define_value_bool_true_is_one() {
-        assert_eq!(DefineValue::Bool(true).to_define_string(), Some("1".to_string()));
+        assert_eq!(
+            DefineValue::Bool(true).to_define_string(),
+            Some("1".to_string())
+        );
     }
 
     // --- ShaderTemplate ---
@@ -419,12 +425,14 @@ mod tests {
     #[test]
     fn registry_invalidate_all() {
         let mut reg = ShaderVariantRegistry::new();
-        let t1 = reg.register_template(
-            ShaderTemplate::new("a.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
-        );
-        let t2 = reg.register_template(
-            ShaderTemplate::new("b.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
-        );
+        let t1 = reg.register_template(ShaderTemplate::new(
+            "a.frag.glsl",
+            ash::vk::ShaderStageFlags::FRAGMENT,
+        ));
+        let t2 = reg.register_template(ShaderTemplate::new(
+            "b.frag.glsl",
+            ash::vk::ShaderStageFlags::FRAGMENT,
+        ));
         let d = DefineSet::new();
         let k1 = reg.variant_key(t1, &d);
         let k2 = reg.variant_key(t2, &d);
@@ -439,9 +447,10 @@ mod tests {
     #[test]
     fn registry_get_compiled_returns_spirv() {
         let mut reg = ShaderVariantRegistry::new();
-        let id = reg.register_template(
-            ShaderTemplate::new("test.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
-        );
+        let id = reg.register_template(ShaderTemplate::new(
+            "test.frag.glsl",
+            ash::vk::ShaderStageFlags::FRAGMENT,
+        ));
         let d = DefineSet::new();
         let key = reg.variant_key(id, &d);
         reg.store_compiled(key, vec![0x07230203, 0x00010000]);
@@ -465,12 +474,14 @@ mod tests {
     #[test]
     fn invalidate_template_only_removes_matching() {
         let mut reg = ShaderVariantRegistry::new();
-        let t1 = reg.register_template(
-            ShaderTemplate::new("a.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
-        );
-        let t2 = reg.register_template(
-            ShaderTemplate::new("b.frag.glsl", ash::vk::ShaderStageFlags::FRAGMENT),
-        );
+        let t1 = reg.register_template(ShaderTemplate::new(
+            "a.frag.glsl",
+            ash::vk::ShaderStageFlags::FRAGMENT,
+        ));
+        let t2 = reg.register_template(ShaderTemplate::new(
+            "b.frag.glsl",
+            ash::vk::ShaderStageFlags::FRAGMENT,
+        ));
         let d = DefineSet::new();
         reg.store_compiled(reg.variant_key(t1, &d), vec![1]);
         reg.store_compiled(reg.variant_key(t2, &d), vec![2]);

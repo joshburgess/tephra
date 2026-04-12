@@ -715,12 +715,7 @@ mod tests {
     #[test]
     fn set_texture_marks_dirty() {
         let mut table = BindingTable::new();
-        table.set_texture(
-            2,
-            0,
-            vk::ImageView::from_raw(1),
-            vk::Sampler::from_raw(2),
-        );
+        table.set_texture(2, 0, vk::ImageView::from_raw(1), vk::Sampler::from_raw(2));
         assert_ne!(table.dirty_sets() & (1 << 2), 0); // set 2 is dirty
     }
 
@@ -808,11 +803,7 @@ mod tests {
     #[test]
     fn set_acceleration_structure_updates_active_mask() {
         let mut table = BindingTable::new();
-        table.set_acceleration_structure(
-            0,
-            0,
-            vk::AccelerationStructureKHR::from_raw(1),
-        );
+        table.set_acceleration_structure(0, 0, vk::AccelerationStructureKHR::from_raw(1));
         assert_ne!(table.set(0).active_mask() & 1, 0);
     }
 
@@ -829,12 +820,7 @@ mod tests {
     fn hash_consistency_across_table_access() {
         let mut table = BindingTable::new();
         table.set_uniform_buffer(0, 0, vk::Buffer::from_raw(1), 0, 64);
-        table.set_texture(
-            0,
-            1,
-            vk::ImageView::from_raw(10),
-            vk::Sampler::from_raw(20),
-        );
+        table.set_texture(0, 1, vk::ImageView::from_raw(10), vk::Sampler::from_raw(20));
 
         let h1 = hash_of(table.set(0));
         let h2 = hash_of(table.set(0));
