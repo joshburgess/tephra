@@ -9,7 +9,7 @@ This library organizes those fragments into something usable — frame contexts,
 Built on [`ash`](https://crates.io/crates/ash) + [`gpu-allocator`](https://crates.io/crates/gpu-allocator) + [`spirv-reflect`](https://crates.io/crates/spirv-reflect) + [`winit`](https://crates.io/crates/winit).
 
 
-> [!CAUTION]
+> [!WARNING]
 > **Early alpha.** APIs are unstable and may change without notice. Not production-ready. Use at your own risk.
 
 
