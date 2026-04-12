@@ -205,11 +205,10 @@ impl Context {
             .engine_version(vk::make_api_version(0, 0, 1, 0))
             .api_version(vk::API_VERSION_1_3);
 
-        let mut instance_create_flags = vk::InstanceCreateFlags::empty();
         #[cfg(target_os = "macos")]
-        {
-            instance_create_flags |= vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
-        }
+        let instance_create_flags = vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
+        #[cfg(not(target_os = "macos"))]
+        let instance_create_flags = vk::InstanceCreateFlags::empty();
 
         let mut instance_ci = vk::InstanceCreateInfo::default()
             .application_info(&app_info)
