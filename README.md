@@ -4,7 +4,7 @@ A [Granite](https://github.com/Themaister/Granite)-inspired mid-level Vulkan abs
 
 Vulkan is the volcano — powerful, raw, and explosive. What it ejects are sharp fragments: memory management, synchronization, descriptor sets, pipeline state. In volcanology, that fragmented material is called *tephra*.
 
-This library organizes those fragments into something usable — frame contexts, deferred deletion, automatic pipeline compilation, descriptor caching — while remaining fundamentally Vulkan-level. You're still thinking in command buffers, render passes, and barrier transitions, not in materials, meshes, and lights. Structured volcanic debris, not yet compressed into solid rock.
+This library organizes those fragments into something usable, such as frame contexts, deferred deletion, automatic pipeline compilation, descriptor caching, etc., while remaining fundamentally Vulkan-level. You're still thinking in command buffers, render passes, and barrier transitions, not in materials, meshes, and lights. Structured volcanic debris, not yet compressed into solid rock.
 
 Built on [`ash`](https://crates.io/crates/ash) + [`gpu-allocator`](https://crates.io/crates/gpu-allocator) + [`spirv-reflect`](https://crates.io/crates/spirv-reflect) + [`winit`](https://crates.io/crates/winit).
 
