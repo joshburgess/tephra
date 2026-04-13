@@ -2,7 +2,7 @@
 
 A [Granite](https://github.com/Themaister/Granite)-inspired mid-level Vulkan abstraction layer for Rust.
 
-Vulkan is the volcano — powerful, raw, and explosive. What it ejects are sharp fragments: memory management, synchronization, descriptor sets, pipeline state. In volcanology, that fragmented material is called *tephra*.
+Vulkan is the volcano; It's powerful, raw, and explosive. What it ejects are sharp fragments: memory management, synchronization, descriptor sets, pipeline state. In volcanology, that fragmented material is called *tephra*.
 
 This library organizes those fragments into something usable, such as frame contexts, deferred deletion, automatic pipeline compilation, descriptor caching, etc., while remaining fundamentally Vulkan-level. You're still thinking in command buffers, render passes, and barrier transitions, not in materials, meshes, and lights. Structured volcanic debris, not yet compressed into solid rock.
 
