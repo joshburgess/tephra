@@ -41,6 +41,14 @@ impl BufferHandle {
     pub fn mapped_slice_mut(&mut self) -> Option<&mut [u8]> {
         self.allocation.as_mut()?.mapped_slice_mut()
     }
+
+    /// Get the raw mapped pointer, if the buffer is host-visible.
+    ///
+    /// Returns `None` if the buffer is device-local only.
+    /// The caller is responsible for synchronization when writing through this pointer.
+    pub fn mapped_ptr(&self) -> Option<std::ptr::NonNull<std::ffi::c_void>> {
+        self.allocation.as_ref()?.mapped_ptr()
+    }
 }
 
 /// An opaque handle to a Vulkan image and its memory allocation.

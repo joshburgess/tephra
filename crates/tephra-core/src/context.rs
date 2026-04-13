@@ -471,6 +471,77 @@ impl Context {
         })
     }
 
+    /// Create a context from pre-existing Vulkan handles.
+    ///
+    /// This allows external code (e.g. a higher-level abstraction layer) to create
+    /// the Vulkan instance, select a physical device, and open the logical device itself,
+    /// then hand those handles to tephra for mid-level management.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure:
+    /// - All handles are valid and were created from the same Vulkan instance.
+    /// - The `device` was created from `physical_device`.
+    /// - Queue handles belong to the specified family indices.
+    /// - The `allocator` was created for this device.
+    pub unsafe fn from_raw(
+        entry: ash::Entry,
+        instance: ash::Instance,
+        device: ash::Device,
+        physical_device: vk::PhysicalDevice,
+        graphics_queue: QueueInfo,
+        compute_queue: QueueInfo,
+        transfer_queue: QueueInfo,
+        allocator: vma::Allocator,
+    ) -> Self {
+        let device_properties = unsafe { instance.get_physical_device_properties(physical_device) };
+
+        let mut timeline_features = vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
+        let mut sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
+        let mut dynamic_rendering_features = vk::PhysicalDeviceDynamicRenderingFeatures::default();
+        let mut indexing_features = vk::PhysicalDeviceDescriptorIndexingFeatures::default();
+        let mut bda_features = vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
+        let mut features2 = vk::PhysicalDeviceFeatures2::default()
+            .push_next(&mut timeline_features)
+            .push_next(&mut sync2_features)
+            .push_next(&mut dynamic_rendering_features)
+            .push_next(&mut indexing_features)
+            .push_next(&mut bda_features);
+        unsafe {
+            instance.get_physical_device_features2(physical_device, &mut features2);
+        }
+
+        let device_features = DeviceFeatures {
+            timeline_semaphore: timeline_features.timeline_semaphore == vk::TRUE,
+            synchronization2: sync2_features.synchronization2 == vk::TRUE,
+            dynamic_rendering: dynamic_rendering_features.dynamic_rendering == vk::TRUE,
+            push_descriptors: false,
+            descriptor_indexing: indexing_features.shader_sampled_image_array_non_uniform_indexing
+                == vk::TRUE,
+            buffer_device_address: bda_features.buffer_device_address == vk::TRUE,
+        };
+
+        let debug_utils_device = Some(ash::ext::debug_utils::Device::new(&instance, &device));
+
+        Self {
+            entry,
+            instance,
+            device,
+            physical_device,
+            graphics_queue,
+            compute_queue,
+            transfer_queue,
+            allocator: Mutex::new(Some(allocator)),
+            quirks: crate::quirks::ImplementationQuirks::detect(&device_properties),
+            device_properties,
+            device_features,
+            debug_utils: None,
+            debug_utils_device,
+            debug_messenger: None,
+            push_descriptor_device: None,
+        }
+    }
+
     /// Select the best physical device using a scoring heuristic.
     fn select_physical_device(
         instance: &ash::Instance,
