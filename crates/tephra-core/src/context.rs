@@ -113,6 +113,12 @@ pub struct Context {
     debug_utils_device: Option<ash::ext::debug_utils::Device>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
     push_descriptor_device: Option<ash::khr::push_descriptor::Device>,
+    /// Whether this `Context` is responsible for tearing down the underlying
+    /// `vk::Instance` and `vk::Device` on Drop. `Context::new` sets this to
+    /// `true` (tephra owns the full lifecycle). `Context::from_raw` sets it
+    /// to `false` so the embedding code (e.g., gneiss-vulkan) keeps ownership
+    /// of the instance/device handles and avoids double-destroy.
+    owns_handles: bool,
 }
 
 /// Vulkan debug messenger callback. Routes validation messages to the `log` crate.
@@ -468,6 +474,7 @@ impl Context {
             debug_utils_device,
             debug_messenger,
             push_descriptor_device,
+            owns_handles: true,
         })
     }
 
@@ -539,6 +546,7 @@ impl Context {
             debug_utils_device,
             debug_messenger: None,
             push_descriptor_device: None,
+            owns_handles: false,
         }
     }
 
@@ -738,12 +746,19 @@ impl Drop for Context {
 
             self.device.destroy_device(None);
 
-            if let (Some(debug_utils), Some(messenger)) = (&self.debug_utils, self.debug_messenger)
-            {
-                debug_utils.destroy_debug_utils_messenger(messenger, None);
-            }
+            // The instance and debug messenger are only destroyed when this
+            // Context owns them. `Context::from_raw` callers (gneiss-vulkan)
+            // keep instance ownership themselves and would otherwise hit a
+            // double-destroy.
+            if self.owns_handles {
+                if let (Some(debug_utils), Some(messenger)) =
+                    (&self.debug_utils, self.debug_messenger)
+                {
+                    debug_utils.destroy_debug_utils_messenger(messenger, None);
+                }
 
-            self.instance.destroy_instance(None);
+                self.instance.destroy_instance(None);
+            }
         }
     }
 }
