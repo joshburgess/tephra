@@ -491,6 +491,7 @@ impl Context {
     /// - The `device` was created from `physical_device`.
     /// - Queue handles belong to the specified family indices.
     /// - The `allocator` was created for this device.
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn from_raw(
         entry: ash::Entry,
         instance: ash::Instance,
